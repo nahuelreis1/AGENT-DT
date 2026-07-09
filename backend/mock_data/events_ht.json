@@ -1,0 +1,18 @@
+{
+    "get": "fixtures/events",
+    "parameters": {"fixture": "868019"},
+    "errors": [],
+    "results": 1,
+    "paging": {"current": 1, "total": 1},
+    "response": [
+        {
+            "time": {"elapsed": 35, "extra": null},
+            "team": {"id": 26, "name": "Argentina", "logo": "https://media.api-sports.io/football/teams/26.png"},
+            "player": {"id": 1521, "name": "N. Molina", "photo": "https://media.api-sports.io/football/players/1521.png"},
+            "assist": {"id": 154, "name": "L. Messi"},
+            "type": "Goal",
+            "detail": "Normal Goal",
+            "comments": null
+        }
+    ]
+}

@@ -1,0 +1,63 @@
+{
+    "get": "fixtures/events",
+    "parameters": {"fixture": "868019"},
+    "errors": [],
+    "results": 6,
+    "paging": {"current": 1, "total": 1},
+    "response": [
+        {
+            "time": {"elapsed": 35, "extra": null},
+            "team": {"id": 26, "name": "Argentina", "logo": "https://media.api-sports.io/football/teams/26.png"},
+            "player": {"id": 1521, "name": "N. Molina", "photo": "https://media.api-sports.io/football/players/1521.png"},
+            "assist": {"id": 154, "name": "L. Messi"},
+            "type": "Goal",
+            "detail": "Normal Goal",
+            "comments": null
+        },
+        {
+            "time": {"elapsed": 40, "extra": 3},
+            "team": {"id": 26, "name": "Argentina", "logo": "https://media.api-sports.io/football/teams/26.png"},
+            "player": {"id": 154, "name": "L. Messi", "photo": "https://media.api-sports.io/football/players/154.png"},
+            "assist": {"id": null, "name": null},
+            "type": "Goal",
+            "detail": "Penalty",
+            "comments": null
+        },
+        {
+            "time": {"elapsed": 73, "extra": null},
+            "team": {"id": 41, "name": "Netherlands", "logo": "https://media.api-sports.io/football/teams/41.png"},
+            "player": {"id": 1528, "name": "W. Weghorst", "photo": "https://media.api-sports.io/football/players/1528.png"},
+            "assist": {"id": 1529, "name": "D. Blind"},
+            "type": "Goal",
+            "detail": "Normal Goal",
+            "comments": null
+        },
+        {
+            "time": {"elapsed": 78, "extra": null},
+            "team": {"id": 26, "name": "Argentina", "logo": "https://media.api-sports.io/football/teams/26.png"},
+            "player": {"id": 1530, "name": "G. Montiel", "photo": "https://media.api-sports.io/football/players/1530.png"},
+            "assist": {"id": null, "name": null},
+            "type": "Card",
+            "detail": "Yellow Card",
+            "comments": null
+        },
+        {
+            "time": {"elapsed": 82, "extra": null},
+            "team": {"id": 26, "name": "Argentina", "logo": "https://media.api-sports.io/football/teams/26.png"},
+            "player": {"id": 1531, "name": "L. Martínez", "photo": "https://media.api-sports.io/football/players/1531.png"},
+            "assist": {"id": 1532, "name": "L. Paredes"},
+            "type": "subst",
+            "detail": "Substitution 1",
+            "comments": null
+        },
+        {
+            "time": {"elapsed": 90, "extra": 11},
+            "team": {"id": 41, "name": "Netherlands", "logo": "https://media.api-sports.io/football/teams/41.png"},
+            "player": {"id": 1528, "name": "W. Weghorst", "photo": "https://media.api-sports.io/football/players/1528.png"},
+            "assist": {"id": null, "name": null},
+            "type": "Goal",
+            "detail": "Normal Goal",
+            "comments": "Free kick routine"
+        }
+    ]
+}
