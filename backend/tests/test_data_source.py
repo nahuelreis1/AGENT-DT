@@ -223,6 +223,42 @@ class TestMockDataSourceGetDetails:
         with pytest.raises(FileNotFoundError):
             await source.get_details(99)
 
+    async def test_load_json_warns_when_response_envelope_has_errors(self, tmp_path, caplog):
+        """Triangulation: when a mock JSON has a populated `errors`
+        key (the v3 envelope's API-error channel), `_load_json` must
+        log a warning and STILL return the `response` array. This
+        keeps mock corruption visible in CI without crashing the
+        data source.
+        """
+        import json
+        import logging
+
+        # Build a temp mock file with both a populated `errors` key
+        # AND a non-empty `response`. The data source must surface
+        # the warning but return the response.
+        bad_file = tmp_path / "fixture.json"
+        bad_file.write_text(
+            json.dumps(
+                {
+                    "get": "fixtures",
+                    "parameters": {},
+                    "errors": ["rate limit"],
+                    "results": 0,
+                    "paging": {"current": 1, "total": 1},
+                    "response": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        source = MockDataSource(tmp_path)
+
+        with caplog.at_level(logging.WARNING, logger="backend.data_source"):
+            response = source._load_json("fixture.json")
+
+        assert response == []
+        assert any("rate limit" in record.message for record in caplog.records)
+
 
 # ---------------------------------------------------------------------------
 # Requirement: LiveDataSource Interface Stub
