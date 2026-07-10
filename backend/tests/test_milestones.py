@@ -266,6 +266,84 @@ class TestEachTriggerFires:
         # firing even though elapsed >= 15.
         assert 1 not in momenti
 
+    @respx.mock
+    async def test_trigger_6_fires_on_AET(self, mock_datasource, match_state):
+        """Spec fix: momento 6 also fires when short == "AET"
+        (After Extra Time). A match that ends in extra time must
+        trigger the final webhook — otherwise live matches that
+        go to ET would skip it entirely.
+        """
+        respx.post(f"{N8N_URL}{WEBHOOK_PATH}").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+
+        seed_match_state(match_state, make_state(elapsed=120, short="AET"))
+        detector = make_detector(match_state, mock_datasource)
+
+        await detector.check_and_push()
+        await detector.aclose()
+
+        momenti = fire_momenti_from_calls(respx.calls)
+        assert 6 in momenti
+
+    @respx.mock
+    async def test_trigger_6_fires_on_PEN(self, mock_datasource, match_state):
+        """Spec fix: momento 6 also fires when short == "PEN"
+        (Penalty Shootout end). A match that goes to penalties
+        must trigger the final webhook.
+        """
+        respx.post(f"{N8N_URL}{WEBHOOK_PATH}").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+
+        seed_match_state(match_state, make_state(elapsed=120, short="PEN"))
+        detector = make_detector(match_state, mock_datasource)
+
+        await detector.check_and_push()
+        await detector.aclose()
+
+        momenti = fire_momenti_from_calls(respx.calls)
+        assert 6 in momenti
+
+    @respx.mock
+    async def test_trigger_4_fires_during_ET(self, mock_datasource, match_state):
+        """Spec fix: momento 4 guard widens to include extra-time
+        statuses (ET, BT, P, AET, PEN). At elapsed=65 with short="ET"
+        momento 4 must fire — without the wider guard, a match
+        that goes to extra time would skip the 60-minute snapshot.
+        """
+        respx.post(f"{N8N_URL}{WEBHOOK_PATH}").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+
+        seed_match_state(match_state, make_state(elapsed=65, short="ET"))
+        detector = make_detector(match_state, mock_datasource)
+
+        await detector.check_and_push()
+        await detector.aclose()
+
+        momenti = fire_momenti_from_calls(respx.calls)
+        assert 4 in momenti
+
+    @respx.mock
+    async def test_trigger_5_fires_during_ET(self, mock_datasource, match_state):
+        """Spec fix: momento 5 guard widens to include extra-time
+        statuses (ET, BT, P, AET, PEN). At elapsed=80 with short="ET"
+        momento 5 must fire.
+        """
+        respx.post(f"{N8N_URL}{WEBHOOK_PATH}").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+
+        seed_match_state(match_state, make_state(elapsed=80, short="ET"))
+        detector = make_detector(match_state, mock_datasource)
+
+        await detector.check_and_push()
+        await detector.aclose()
+
+        momenti = fire_momenti_from_calls(respx.calls)
+        assert 5 in momenti
+
 
 # ---------------------------------------------------------------------------
 # Requirement: status guards prevent false fires

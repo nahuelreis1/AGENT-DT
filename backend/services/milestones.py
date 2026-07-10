@@ -60,14 +60,22 @@ TRIGGER_MATRIX: list[tuple[int, Callable, Callable]] = [
     (
         4,
         lambda s: s.status.elapsed >= 60,
-        lambda s: s.status.short in ("HT", "2H", "FT"),
+        # Guard widened: extra-time statuses (ET, BT, P, AET, PEN)
+        # are also valid for the 60-minute snapshot. Without this,
+        # a match that goes to ET would skip momento 4.
+        lambda s: s.status.short in ("HT", "2H", "ET", "BT", "P", "AET", "PEN", "FT"),
     ),
     (
         5,
         lambda s: s.status.elapsed >= 75,
-        lambda s: s.status.short in ("2H", "FT"),
+        # Guard widened: same set of extra-time statuses as momento 4
+        # so the 75-minute snapshot still fires in extra time.
+        lambda s: s.status.short in ("2H", "ET", "BT", "P", "AET", "PEN", "FT"),
     ),
-    (6, lambda s: s.status.short == "FT", lambda s: True),
+    # Momento 6 trigger widened: AET (After Extra Time) and PEN
+    # (Penalty Shootout end) also count as "match finished" so the
+    # final webhook fires on those matches too.
+    (6, lambda s: s.status.short in ("FT", "AET", "PEN"), lambda s: True),
 ]
 
 
