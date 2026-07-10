@@ -9,6 +9,11 @@ branches, structural typing).
 These tests reference `backend.data_source` and the live JSON files in
 `backend/mock_data/`. Both are needed to make the suite pass — no fake
 data, no mocks of the data source under test.
+
+`LiveDataSource` is tested via a `FakeAPIFootballClient` that records
+calls and returns canned v3 envelopes. This isolates the
+`LiveDataSource` layer from the httpx client — the integration of the
+two is exercised in `test_api_football.py`.
 """
 from __future__ import annotations
 
@@ -23,6 +28,118 @@ from backend.data_source import (
 )
 from backend.models import MatchEvent, MatchState, PlayerStats, TeamStats
 from backend.parsers import parse_fixture, parse_players, parse_statistics
+
+
+# ---------------------------------------------------------------------------
+# FakeAPIFootballClient — records calls, returns canned v3 data.
+# Used to verify `LiveDataSource` delegates to the client + parsers
+# without spinning up a real httpx stack.
+# ---------------------------------------------------------------------------
+
+
+class FakeAPIFootballClient:
+    """Stand-in for `APIFootballClient` in `LiveDataSource` tests.
+
+    Each `fetch_*` method records the `fixture_id` it was called with
+    and returns the canned payload. The payloads are shaped like the
+    real v3 envelope inner arrays so the parsers handle them
+    unchanged.
+    """
+
+    def __init__(self, fixture: dict, events: list, statistics: list, players: list) -> None:
+        self._fixture = fixture
+        self._events = events
+        self._statistics = statistics
+        self._players = players
+        self.fixture_calls: list[int] = []
+        self.events_calls: list[int] = []
+        self.statistics_calls: list[int] = []
+        self.players_calls: list[int] = []
+
+    async def fetch_fixture(self, fixture_id: int) -> dict:
+        self.fixture_calls.append(fixture_id)
+        return self._fixture
+
+    async def fetch_events(self, fixture_id: int) -> list:
+        self.events_calls.append(fixture_id)
+        return self._events
+
+    async def fetch_statistics(self, fixture_id: int) -> list:
+        self.statistics_calls.append(fixture_id)
+        return self._statistics
+
+    async def fetch_players(self, fixture_id: int) -> list:
+        self.players_calls.append(fixture_id)
+        return self._players
+
+    async def aclose(self) -> None:
+        pass
+
+
+def fixture_payload() -> dict:
+    """Minimal v3 fixture envelope element that `parse_fixture` accepts."""
+    return {
+        "fixture": {
+            "id": 868019,
+            "status": {"elapsed": 15, "short": "1H", "long": "First Half"},
+        },
+        "teams": {
+            "home": {"id": 26, "name": "Argentina"},
+            "away": {"id": 33, "name": "Netherlands"},
+        },
+        "goals": {"home": 0, "away": 0},
+    }
+
+
+def events_payload() -> list:
+    """Minimal v3 events envelope array that `parse_events` accepts."""
+    return [
+        {
+            "time": {"elapsed": 35, "extra": None},
+            "team": {"name": "Argentina"},
+            "player": {"name": "N. Molina"},
+            "assist": {"name": "L. Messi"},
+            "type": "Goal",
+            "detail": "Normal Goal",
+        }
+    ]
+
+
+def statistics_payload() -> list:
+    """Minimal v3 statistics envelope array (two teams, all 10 stat types).
+
+    `TeamStats` requires every field declared on the Pydantic model;
+    the parser only populates fields whose stat type is in
+    `STAT_TYPE_MAP`. So the payload must include all 10 stat types
+    or the parser raises a ValidationError on the missing fields.
+    """
+    stats_block = [
+        {"type": "Ball Possession", "value": "55%"},
+        {"type": "Shots on Goal", "value": 3},
+        {"type": "Total Shots", "value": 8},
+        {"type": "Corner Kicks", "value": 4},
+        {"type": "Fouls", "value": 10},
+        {"type": "Offsides", "value": 1},
+        {"type": "Yellow Cards", "value": 1},
+        {"type": "Red Cards", "value": 0},
+        {"type": "Passes Accurate", "value": "85%"},
+        {"type": "Expected Goals", "value": "1.23"},
+    ]
+    return [
+        {"team": {"name": "Argentina"}, "statistics": stats_block},
+        {
+            "team": {"name": "Netherlands"},
+            "statistics": [{**s, "value": 0 if isinstance(v := s["value"], int) else v} for s in stats_block],
+        },
+    ]
+
+
+def players_payload() -> list:
+    """Minimal v3 players envelope array (two teams, empty rosters)."""
+    return [
+        {"team": {"name": "Argentina"}, "players": []},
+        {"team": {"name": "Netherlands"}, "players": []},
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +162,14 @@ class TestDataSourceProtocol:
         passes the structural check. The Protocol is about shape, not
         inheritance.
         """
-        assert isinstance(LiveDataSource(), DataSource)
+        client = FakeAPIFootballClient(
+            fixture=fixture_payload(),
+            events=events_payload(),
+            statistics=statistics_payload(),
+            players=players_payload(),
+        )
+
+        assert isinstance(LiveDataSource(client=client, fixture_id=868019), DataSource)
 
 
 # ---------------------------------------------------------------------------
@@ -261,32 +385,115 @@ class TestMockDataSourceGetDetails:
 
 
 # ---------------------------------------------------------------------------
-# Requirement: LiveDataSource Interface Stub
+# Requirement: LiveDataSource delegates to the client + parsers
 # ---------------------------------------------------------------------------
 
 
-class TestLiveDataSourceStub:
-    async def test_get_fixture_raises_not_implemented_error(self):
-        """Spec: 'LiveDataSource methods are not yet implemented'.
+class TestLiveDataSourceDelegation:
+    """`LiveDataSource` is a thin adapter: it calls the
+    `APIFootballClient` and pipes the result through the same parsers
+    the mock source uses. These tests pin the delegation contract.
+    """
 
-        `get_fixture()` on a fresh `LiveDataSource` MUST raise
-        `NotImplementedError` — the full implementation lands in
-        change 2.
+    async def test_get_fixture_calls_client_fetch_fixture_with_fixture_id(self):
+        """Spec: 'LiveDataSource.get_fixture delegates to client.fetch_fixture'.
+
+        The live source MUST call the client's `fetch_fixture` with
+        the `fixture_id` it was constructed with, then return the
+        parsed `MatchState`.
         """
-        source = LiveDataSource()
+        client = FakeAPIFootballClient(
+            fixture=fixture_payload(),
+            events=events_payload(),
+            statistics=statistics_payload(),
+            players=players_payload(),
+        )
+        source = LiveDataSource(client=client, fixture_id=868019)
 
-        with pytest.raises(NotImplementedError):
-            await source.get_fixture()
+        state = await source.get_fixture()
 
-    async def test_get_details_raises_not_implemented_error(self):
-        """Triangulation: `get_details` is also a stub. The class
-        conforms to the `DataSource` Protocol but raises on every
-        call.
+        assert client.fixture_calls == [868019]
+        assert isinstance(state, MatchState)
+        assert state.fixture_id == 868019
+        assert state.home.name == "Argentina"
+        assert state.away.name == "Netherlands"
+
+    async def test_get_details_calls_all_four_client_methods_with_fixture_id(self):
+        """Spec: 'LiveDataSource.get_details fans out to events/statistics/players'.
+
+        A single `get_details(momento)` call must invoke all three
+        collection endpoints on the client, in the documented order,
+        all with the same `fixture_id`. The returned tuple is
+        (events, home_stats, away_stats, home_players, away_players).
         """
-        source = LiveDataSource()
+        client = FakeAPIFootballClient(
+            fixture=fixture_payload(),
+            events=events_payload(),
+            statistics=statistics_payload(),
+            players=players_payload(),
+        )
+        source = LiveDataSource(client=client, fixture_id=868019)
 
-        with pytest.raises(NotImplementedError):
-            await source.get_details(1)
+        result = await source.get_details(1)
+
+        assert client.events_calls == [868019]
+        assert client.statistics_calls == [868019]
+        assert client.players_calls == [868019]
+        # Tuple shape: (events, home_stats, away_stats, home_players, away_players)
+        assert len(result) == 5
+        events, home_stats, away_stats, home_players, away_players = result
+        assert isinstance(events, list)
+        assert isinstance(home_stats, TeamStats)
+        assert isinstance(away_stats, TeamStats)
+        assert isinstance(home_players, list)
+        assert isinstance(away_players, list)
+
+    async def test_get_details_parses_events_via_parse_events(self):
+        """Triangulation: the events returned by `get_details` MUST
+        be `MatchEvent` instances, parsed via the same
+        `parse_events` the mock source uses. This is the
+        "same parser path for both modes" invariant.
+        """
+        client = FakeAPIFootballClient(
+            fixture=fixture_payload(),
+            events=events_payload(),
+            statistics=statistics_payload(),
+            players=players_payload(),
+        )
+        source = LiveDataSource(client=client, fixture_id=868019)
+
+        events, _, _, _, _ = await source.get_details(1)
+
+        assert len(events) == 1
+        assert isinstance(events[0], MatchEvent)
+        assert events[0].minute == 35
+        assert events[0].player == "N. Molina"
+        assert events[0].team == "Argentina"
+        assert events[0].type == "Goal"
+
+    async def test_get_details_ignores_momento_argument(self):
+        """Triangulation: `get_details` is called with `momento` but
+        the live source passes only `fixture_id` to the client (the
+        live API has no `momento` concept — the milestone is
+        decided locally by the detector, not by the API). The
+        momento argument is reserved for future use.
+        """
+        client = FakeAPIFootballClient(
+            fixture=fixture_payload(),
+            events=events_payload(),
+            statistics=statistics_payload(),
+            players=players_payload(),
+        )
+        source = LiveDataSource(client=client, fixture_id=868019)
+
+        # Both calls must produce the same data — the live source
+        # does not switch snapshots by momento.
+        events_a, _, _, _, _ = await source.get_details(1)
+        events_b, _, _, _, _ = await source.get_details(6)
+
+        assert events_a == events_b
+        # The client was hit twice for each endpoint — once per call.
+        assert client.events_calls == [868019, 868019]
 
 
 # ---------------------------------------------------------------------------
