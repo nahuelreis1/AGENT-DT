@@ -39,11 +39,29 @@ from backend.models import (
 
 # Map API-Football status.short to the Spanish display label used in
 # the context text. Exact strings per `context-text-format` spec.
+# The live API-Football v3 endpoint emits 18 distinct statuses; any
+# unknown status falls back to the raw `short` value (existing
+# behavior — see `PERIOD_NAMES.get(short, short)` in `_header_section`).
 PERIOD_NAMES: dict[str, str] = {
+    "TBD": "Horario a confirmar",
+    "NS": "No iniciado",
     "1H": "1er Tiempo",
     "HT": "Entretiempo",
     "2H": "2do Tiempo",
+    "ET": "Tiempo extra",
+    "BT": "Descanso tiempo extra",
+    "P": "Penales en curso",
+    "SUSP": "Suspendido",
+    "INT": "Interrumpido",
     "FT": "Final",
+    "AET": "Final (tiempo extra)",
+    "PEN": "Final (penales)",
+    "PST": "Postergado",
+    "CANC": "Cancelado",
+    "ABD": "Abandonado",
+    "AWD": "Perdida por regla",
+    "WO": "Ganado por ausencia",
+    "LIVE": "En curso",
 }
 
 
@@ -107,16 +125,19 @@ class MatchStateManager:
         self._state.away_players = list(away_players)
 
         # Score reconciliation (Option A): count Goal events per team.
+        # Uses the shared `_goals_for_team` helper so score recon and
+        # the goals-section text cannot drift on Missed Penalty / Own
+        # Goal handling. A "Missed Penalty" Goal event is excluded
+        # entirely; an "Own Goal" by `team_name` is flipped to the
+        # opponent's column.
         home_name = self._state.home.name
         away_name = self._state.away.name
-        home_goals = sum(
-            1 for e in events if e.type == "Goal" and e.team == home_name
+        self._state.home.goals = len(
+            _goals_for_team(events, home_name, away_name)
         )
-        away_goals = sum(
-            1 for e in events if e.type == "Goal" and e.team == away_name
+        self._state.away.goals = len(
+            _goals_for_team(events, away_name, home_name)
         )
-        self._state.home.goals = home_goals
-        self._state.away.goals = away_goals
 
         # Stamp the snapshot time so downstream consumers can tell
         # when the state was last touched.
@@ -189,14 +210,27 @@ class MatchStateManager:
 
     @staticmethod
     def _goals_section(state: MatchState) -> str:
-        """`GOLES: {home_goals_str} - {away_goals_str}` (or `Sin goles aún`)."""
-        home_goals = [e for e in state.events if e.type == "Goal" and e.team == state.home.name]
-        away_goals = [e for e in state.events if e.type == "Goal" and e.team == state.away.name]
+        """`GOLES: {home_goals_str} - {away_goals_str}` (or `Sin goles aún`).
+
+        Uses `_goals_for_team` (shared with score reconciliation) so
+        Missed Penalties and Own Goals are handled consistently:
+          - "Missed Penalty" Goal events are excluded entirely
+          - Own Goals are flipped to the BENEFITED team, formatted as
+            `{player} (og {minute}')` (NOT `(pen X')` — an own goal
+            is not a penalty)
+          - Scored penalties are formatted as `{player} (pen {minute}')`
+        """
+        home_goals = _goals_for_team(state.events, state.home.name, state.away.name)
+        away_goals = _goals_for_team(state.events, state.away.name, state.home.name)
 
         if not home_goals and not away_goals:
             return "GOLES: Sin goles aún"
 
         def _fmt(event: MatchEvent) -> str:
+            # Own Goals are formatted with "(og ...)" — NOT "(pen ...)"
+            # since an own goal is not a penalty.
+            if "Own Goal" in event.detail:
+                return f"{event.player} (og {event.minute}')"
             if "Penalty" in event.detail:
                 return f"{event.player} (pen {event.minute}')"
             return f"{event.player} ({event.minute}')"
@@ -282,6 +316,45 @@ class MatchStateManager:
 # ====================================================================== #
 # Module-level helpers (testable independently)
 # ====================================================================== #
+
+
+def _is_actual_goal(event: MatchEvent) -> bool:
+    """Return True if `event` counts as a goal for score purposes.
+
+    A "Missed Penalty" Goal event is NOT a goal — it is the API
+    reporting a missed penalty shot. We exclude it from the score
+    and from the goals section.
+    """
+    return event.type == "Goal" and "Missed" not in event.detail
+
+
+def _goals_for_team(
+    events: list[MatchEvent],
+    team_name: str,
+    opponent_name: str,
+) -> list[MatchEvent]:
+    """Filter Goal events for `team_name`, flipping Own Goals to the
+    opponent and excluding Missed Penalties.
+
+    Single source of truth for "which events count as goals for
+    team X?" — used by `update_details` (score recon) and
+    `_goals_section` (context text). Keeping the logic in one place
+    means the two cannot drift on edge cases.
+    """
+    goals: list[MatchEvent] = []
+    for e in events:
+        if not _is_actual_goal(e):
+            continue
+        if "Own Goal" in e.detail:
+            # An Own Goal by the OPPONENT benefits us. The event's
+            # `team` field is the player who scored the own goal,
+            # which is the opponent.
+            if e.team == opponent_name:
+                goals.append(e)
+        else:
+            if e.team == team_name:
+                goals.append(e)
+    return goals
 
 
 def _team_abbr(name: str) -> str:

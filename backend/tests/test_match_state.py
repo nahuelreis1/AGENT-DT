@@ -283,6 +283,56 @@ class TestUpdateDetails:
         assert state.events == [new_event]
         assert state.home_players == [new_player]
 
+    def test_missed_penalty_does_not_increment_score(self):
+        """Spec fix: a 'Missed Penalty' Goal event must NOT be counted
+        in the score. The API emits a separate event with detail
+        containing 'Missed' when a penalty is missed — the score
+        reconciliation must skip it.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(home_goals=0, away_goals=0))
+        events = [
+            MatchEvent(
+                minute=80,
+                team="Argentina",
+                player="L. Messi",
+                type="Goal",
+                detail="Missed Penalty",
+            ),
+        ]
+
+        ms.update_details(events, None, None, [], [])
+
+        assert ms.get_state().home.goals == 0
+        assert ms.get_state().away.goals == 0
+
+    def test_own_goal_counts_for_opponent(self):
+        """Spec fix: an Own Goal by Argentina counts as a goal for
+        Netherlands (the opponent). Score reconciliation must flip
+        the team attribution.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(home_goals=0, away_goals=0))
+        events = [
+            MatchEvent(
+                minute=50,
+                team="Argentina",  # Argentine player scored own goal
+                player="R. De Paul",
+                type="Goal",
+                detail="Own Goal",
+            ),
+        ]
+
+        ms.update_details(events, None, None, [], [])
+
+        # Netherlands (away) gets +1 because of the own goal
+        assert ms.get_state().home.goals == 0
+        assert ms.get_state().away.goals == 1
+
 
 # ---------------------------------------------------------------------------
 # Context text — header
@@ -344,6 +394,62 @@ class TestContextTextHeader:
         text = ms.get_context_text()
 
         assert text.startswith("⚽ Argentina 0 - 0 Holanda | Minuto 15 | 1er Tiempo\n\n")
+
+    def test_header_status_AET_renders_Final_tiempo_extra(self):
+        """Spec: 'AET' status renders as 'Final (tiempo extra)'.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(
+            make_match_state(elapsed=120, short="AET", home_goals=2, away_goals=2)
+        )
+
+        text = ms.get_context_text()
+
+        assert text.startswith("⚽ Argentina 2 - 2 Holanda | Minuto 120 | Final (tiempo extra)\n\n")
+
+    def test_header_status_PEN_renders_Final_penales(self):
+        """Spec: 'PEN' status renders as 'Final (penales)'.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(
+            make_match_state(elapsed=120, short="PEN", home_goals=2, away_goals=2)
+        )
+
+        text = ms.get_context_text()
+
+        assert text.startswith("⚽ Argentina 2 - 2 Holanda | Minuto 120 | Final (penales)\n\n")
+
+    def test_header_status_NS_renders_No_iniciado(self):
+        """Spec: 'NS' status (Not Started) renders as 'No iniciado'.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=0, short="NS", home_goals=0, away_goals=0))
+
+        text = ms.get_context_text()
+
+        assert "No iniciado" in text
+
+    def test_header_unknown_status_falls_back_to_raw_short(self):
+        """Spec: any unknown status falls back to the raw `short`
+        value (existing behavior — no exception, no missing key).
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(
+            make_match_state(elapsed=15, short="XYZ", home_goals=0, away_goals=0)
+        )
+
+        text = ms.get_context_text()
+
+        # Raw short value used as fallback
+        assert " | XYZ" in text
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +526,88 @@ class TestContextTextGoals:
         text = ms.get_context_text()
 
         assert "GOLES: Molina (35'), Messi (pen 43') - " in text
+
+    def test_goals_section_own_goal_appears_under_benefited_team(self):
+        """Spec fix: when Argentina scores an own goal, the goal
+        text appears under the OPPONENT's (Netherlands/Holanda)
+        goals section with the `(og X')` prefix.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=55, short="2H", home_goals=0, away_goals=1))
+        events = [
+            MatchEvent(
+                minute=50,
+                team="Argentina",
+                player="R. De Paul",
+                type="Goal",
+                detail="Own Goal",
+            ),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        # Argentina's own goal must appear under Holanda's goals,
+        # formatted with the (og) prefix — NOT under Argentina.
+        assert "GOLES:  - R. De Paul (og 50')" in text
+
+    def test_goals_section_missed_penalty_excluded(self):
+        """Spec fix: a 'Missed Penalty' event must NOT appear in
+        the GOLES section at all — missed penalties are not goals.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=85, short="2H", home_goals=1, away_goals=0))
+        events = [
+            MatchEvent(minute=35, team="Argentina", player="Molina", type="Goal", detail="Normal Goal"),
+            MatchEvent(
+                minute=80,
+                team="Argentina",
+                player="L. Messi",
+                type="Goal",
+                detail="Missed Penalty",
+            ),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        # Only the made goal appears, missed penalty is excluded
+        assert "GOLES: Molina (35') - " in text
+        assert "Messi" not in text  # missed penalty player must not appear
+        assert "Missed Penalty" not in text
+
+    def test_scored_penalty_formatted_missed_penalty_not(self):
+        """Spec fix: only SCORED penalties get the `(pen X')` prefix.
+        A 'Missed Penalty' event must NEVER be rendered as `(pen X')`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=90, short="2H", home_goals=1, away_goals=0))
+        events = [
+            MatchEvent(minute=43, team="Argentina", player="Messi", type="Goal", detail="Penalty"),
+            MatchEvent(
+                minute=80,
+                team="Argentina",
+                player="L. Messi",
+                type="Goal",
+                detail="Missed Penalty",
+            ),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        # Scored penalty uses (pen) — must appear
+        assert "Messi (pen 43')" in text
+        # Missed penalty MUST NOT use (pen) — that would falsely
+        # credit the goal. And it must not appear at all.
+        assert "Messi (pen 80')" not in text
+        assert "Missed Penalty" not in text
 
 
 # ---------------------------------------------------------------------------
@@ -1166,13 +1354,38 @@ class TestContextTextGating:
 
 class TestModuleSurface:
     def test_period_names_constant_is_exported(self):
-        """Spec: the PERIOD_NAMES map is part of the public surface.
+        """Spec: the PERIOD_NAMES map covers all 19 API-Football v3
+        statuses with the exact Spanish labels from the proposal.
+
+        Previously the map had only 4 entries; the live API emits
+        19 distinct statuses (TBD, NS, 1H, HT, 2H, ET, BT, P, SUSP,
+        INT, FT, AET, PEN, PST, CANC, ABD, AWD, WO, LIVE). The
+        fallback for any unknown status is the raw `short` value.
+
+        The proposal text says "all 18" but the mapping table and
+        the live API both have 19 entries; we pin the table.
         """
         from backend.services.match_state import PERIOD_NAMES
 
+        assert len(PERIOD_NAMES) == 19
         assert PERIOD_NAMES == {
+            "TBD": "Horario a confirmar",
+            "NS": "No iniciado",
             "1H": "1er Tiempo",
             "HT": "Entretiempo",
             "2H": "2do Tiempo",
+            "ET": "Tiempo extra",
+            "BT": "Descanso tiempo extra",
+            "P": "Penales en curso",
+            "SUSP": "Suspendido",
+            "INT": "Interrumpido",
             "FT": "Final",
+            "AET": "Final (tiempo extra)",
+            "PEN": "Final (penales)",
+            "PST": "Postergado",
+            "CANC": "Cancelado",
+            "ABD": "Abandonado",
+            "AWD": "Perdida por regla",
+            "WO": "Ganado por ausencia",
+            "LIVE": "En curso",
         }
