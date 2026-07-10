@@ -1,0 +1,1178 @@
+"""Tests for MatchStateManager — in-memory holder of MatchState and the
+Prediction log, plus the 7-section context text per the
+`context-text-format` spec.
+
+Covers every scenario in
+`openspec/changes/backend-services/specs/match-state-manager/spec.md`
+plus triangulation cases that exercise the real code paths
+(score reconciliation idempotency, pluralization, snapshot at min 67,
+pre-kickoff empty variants).
+
+These tests reference `backend.services.match_state`. A missing or broken
+match_state module will fail at the import line — this keeps the
+RED→GREEN cycle honest.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+import pytest
+from pydantic import ValidationError
+
+from backend.models import (
+    FixtureStatus,
+    MatchEvent,
+    MatchState,
+    PlayerStats,
+    TeamScore,
+    TeamStats,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers — build hand-crafted MatchState objects for individual tests.
+# Centralizing the construction keeps the per-test bodies focused on
+# the behavior under test, not on dict/model construction.
+# ---------------------------------------------------------------------------
+
+
+def make_status(elapsed: int = 0, short: str = "1H", long: str = "First Half") -> FixtureStatus:
+    return FixtureStatus(elapsed=elapsed, short=short, long=long)
+
+
+def make_team_score(name: str, goals: int = 0) -> TeamScore:
+    return TeamScore(id=1, name=name, goals=goals)
+
+
+def make_match_state(
+    *,
+    elapsed: int = 0,
+    short: str = "1H",
+    home_name: str = "Argentina",
+    away_name: str = "Holanda",
+    home_goals: int = 0,
+    away_goals: int = 0,
+    events: list[MatchEvent] | None = None,
+    home_stats: TeamStats | None = None,
+    away_stats: TeamStats | None = None,
+    home_players: list[PlayerStats] | None = None,
+    away_players: list[PlayerStats] | None = None,
+) -> MatchState:
+    return MatchState(
+        fixture_id=868019,
+        status=make_status(elapsed=elapsed, short=short),
+        home=make_team_score(home_name, home_goals),
+        away=make_team_score(away_name, away_goals),
+        events=list(events) if events else [],
+        home_stats=home_stats,
+        away_stats=away_stats,
+        home_players=list(home_players) if home_players else [],
+        away_players=list(away_players) if away_players else [],
+        last_updated=datetime(2022, 12, 9, 20, 0, 0, tzinfo=timezone.utc),
+    )
+
+
+def make_player(
+    name: str,
+    rating: str = "7.0",
+    *,
+    goals: int = 0,
+    assists: int = 0,
+    key_passes: int = 0,
+    dribbles_success: int = 0,
+    dribbles_attempts: int = 0,
+) -> PlayerStats:
+    return PlayerStats(
+        name=name,
+        position="M",
+        rating=rating,
+        minutes=67,
+        goals=goals,
+        assists=assists,
+        shots_total=1,
+        shots_on=1,
+        passes_total=30,
+        key_passes=key_passes,
+        pass_accuracy="85%",
+        duels_won=3,
+        duels_total=5,
+        dribbles_success=dribbles_success,
+        dribbles_attempts=dribbles_attempts,
+        fouls_committed=1,
+        fouls_drawn=2,
+        yellow_cards=0,
+        red_cards=0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Construction & initialization
+# ---------------------------------------------------------------------------
+
+
+class TestConstruction:
+    def test_get_state_before_update_fixture_raises_runtime_error(self):
+        """Spec: 'Uninitialized state raises on get_state'.
+
+        A freshly-constructed MatchStateManager() has no fixture, so
+        `get_state()` MUST raise RuntimeError rather than returning
+        `None` (which would force every caller to null-check).
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+
+        with pytest.raises(RuntimeError):
+            ms.get_state()
+
+    def test_update_fixture_makes_state_readable(self):
+        """Spec: 'Fixture update makes state readable'.
+
+        After `update_fixture(state)`, `get_state()` MUST return the
+        same object — same fixture_id, same status, same teams.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        state = make_match_state(elapsed=15, short="1H", home_goals=0, away_goals=0)
+
+        ms.update_fixture(state)
+
+        assert ms.get_state().fixture_id == 868019
+        assert ms.get_state().status.short == "1H"
+        assert ms.get_state().home.name == "Argentina"
+        assert ms.get_state().away.name == "Holanda"
+
+    def test_update_fixture_overwrites_prior_state(self):
+        """Triangulation: a second `update_fixture` call replaces the
+        prior state — update_fixture is a snapshot, not a merge.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        first = make_match_state(elapsed=15, short="1H", home_goals=0, away_goals=0)
+        second = make_match_state(elapsed=67, short="2H", home_goals=2, away_goals=1)
+
+        ms.update_fixture(first)
+        ms.update_fixture(second)
+
+        assert ms.get_state().status.elapsed == 67
+        assert ms.get_state().status.short == "2H"
+        assert ms.get_state().home.goals == 2
+
+
+# ---------------------------------------------------------------------------
+# Score reconciliation via update_details
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateDetails:
+    def test_update_details_before_update_fixture_raises_runtime_error(self):
+        """Spec: detail update requires fixture to be initialized first.
+
+        Calling `update_details` before `update_fixture` is a
+        programmer error — the manager has no home/away team to
+        attribute goals to, so we raise loudly.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+
+        with pytest.raises(RuntimeError):
+            ms.update_details([], None, None, [], [])
+
+    def test_update_details_with_one_home_goal_event_recomputes_to_1_0(self):
+        """Spec triangulation: a single home Goal event recomputes
+        home.goals=1, away.goals=0, OVERRIDING the prior fixture score.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(home_goals=0, away_goals=0))
+        events = [
+            MatchEvent(minute=35, team="Argentina", player="Molina", type="Goal", detail="Normal Goal"),
+        ]
+
+        ms.update_details(events, None, None, [], [])
+
+        assert ms.get_state().home.goals == 1
+        assert ms.get_state().away.goals == 0
+
+    def test_update_details_with_empty_events_yields_0_0_even_if_fixture_set_2_2(self):
+        """Spec: 'Min 15 with empty events yields 0-0'.
+
+        The API's `goals` field is incremental and stale by design;
+        `update_details` with no Goal events MUST recompute 0-0 even
+        when `update_fixture` previously set 2-2. The events list is
+        the ground truth.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(home_goals=2, away_goals=2))
+
+        ms.update_details([], None, None, [], [])
+
+        assert ms.get_state().home.goals == 0
+        assert ms.get_state().away.goals == 0
+
+    def test_update_details_with_four_goal_events_split_2_2_overrides_api_score(self):
+        """Spec: '4 Goal events split 2-2 override API score'.
+
+        Two Argentina goals (Molina 35', Messi pen 73') and two
+        Holanda goals (Weghorst 83', Weghorst 101') MUST recompute to
+        2-2 even when `update_fixture` had set 1-1.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(home_goals=1, away_goals=1))
+        events = [
+            MatchEvent(minute=35, team="Argentina", player="Molina", type="Goal", detail="Normal Goal"),
+            MatchEvent(minute=73, team="Argentina", player="Messi", type="Goal", detail="Penalty"),
+            MatchEvent(minute=83, team="Holanda", player="Weghorst", type="Goal", detail="Normal Goal"),
+            MatchEvent(minute=101, team="Holanda", player="Weghorst", type="Goal", detail="Normal Goal"),
+        ]
+
+        ms.update_details(events, None, None, [], [])
+
+        assert ms.get_state().home.goals == 2
+        assert ms.get_state().away.goals == 2
+
+    def test_update_details_reconciliation_is_idempotent(self):
+        """Spec: 'Reconciliation is idempotent'.
+
+        Calling `update_details` twice with the same events MUST
+        leave the score unchanged. The recompute must be deterministic
+        given the same input.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(home_goals=0, away_goals=0))
+        events = [
+            MatchEvent(minute=35, team="Argentina", player="Molina", type="Goal", detail="Normal Goal"),
+            MatchEvent(minute=43, team="Argentina", player="Messi", type="Goal", detail="Penalty"),
+            MatchEvent(minute=73, team="Holanda", player="Weghorst", type="Goal", detail="Normal Goal"),
+        ]
+
+        ms.update_details(events, None, None, [], [])
+        first_home, first_away = ms.get_state().home.goals, ms.get_state().away.goals
+        ms.update_details(events, None, None, [], [])
+        second_home, second_away = ms.get_state().home.goals, ms.get_state().away.goals
+
+        assert first_home == second_home == 2
+        assert first_away == second_away == 1
+
+    def test_update_details_replaces_stored_events_and_players(self):
+        """Spec: 'update_details replaces events, stats, players'.
+
+        The new events list MUST replace the one passed to
+        `update_fixture` (or any previous `update_details` call).
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state())
+        new_event = MatchEvent(minute=10, team="Argentina", player="Di Maria", type="Goal", detail="Normal Goal")
+        new_player = make_player("Di Maria", rating="7.0")
+
+        ms.update_details([new_event], None, None, [new_player], [])
+
+        state = ms.get_state()
+        assert state.events == [new_event]
+        assert state.home_players == [new_player]
+
+
+# ---------------------------------------------------------------------------
+# Context text — header
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextHeader:
+    def test_header_at_minute_67_2H(self):
+        """Spec: 'Snapshot at minute 67 with all data' (header sub-assertion).
+
+        Argentina 2-1 Holanda, elapsed=67, short=2H MUST render as:
+        `⚽ Argentina 2 - 1 Holanda | Minuto 67 | 2do Tiempo`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=67, short="2H", home_goals=2, away_goals=1))
+
+        text = ms.get_context_text()
+
+        assert text.startswith("⚽ Argentina 2 - 1 Holanda | Minuto 67 | 2do Tiempo\n\n")
+
+    def test_header_at_minute_101_FT(self):
+        """Spec: 'Extra time minute 101 renders as Final period'.
+
+        The polling tick at minute 101 with status FT MUST render
+        as `Final` (not `2do Tiempo`) because the period_name comes
+        from `status.short`, not from the minute.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=101, short="FT", home_goals=2, away_goals=2))
+
+        text = ms.get_context_text()
+
+        assert text.startswith("⚽ Argentina 2 - 2 Holanda | Minuto 101 | Final\n\n")
+
+    def test_header_uses_period_name_for_HT(self):
+        """Triangulation: HT maps to 'Entretiempo'.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=45, short="HT", home_goals=2, away_goals=0))
+
+        text = ms.get_context_text()
+
+        assert text.startswith("⚽ Argentina 2 - 0 Holanda | Minuto 45 | Entretiempo\n\n")
+
+    def test_header_uses_period_name_for_1H(self):
+        """Triangulation: 1H maps to '1er Tiempo'.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=15, short="1H", home_goals=0, away_goals=0))
+
+        text = ms.get_context_text()
+
+        assert text.startswith("⚽ Argentina 0 - 0 Holanda | Minuto 15 | 1er Tiempo\n\n")
+
+
+# ---------------------------------------------------------------------------
+# Context text — goals section
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextGoals:
+    def test_goals_with_no_events_renders_sin_goles(self):
+        """Spec: 'Match with no goals'.
+
+        When no Goal events exist, the section is exactly:
+        `GOLES: Sin goles aún`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=15, short="1H"))
+
+        text = ms.get_context_text()
+
+        assert "GOLES: Sin goles aún" in text
+
+    def test_goals_with_two_home_goals_and_one_away_goal(self):
+        """Spec triangulation: each goal as `{player} ({minute}')`,
+        penalty as `{player} (pen {minute}')`, joined with `, `.
+        Argentina: Molina (35'), Messi (pen 43'); Holanda: Weghorst (83').
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=85, short="2H", home_goals=2, away_goals=1))
+        events = [
+            MatchEvent(minute=35, team="Argentina", player="Molina", type="Goal", detail="Normal Goal"),
+            MatchEvent(minute=43, team="Argentina", player="Messi", type="Goal", detail="Penalty"),
+            MatchEvent(minute=83, team="Holanda", player="Weghorst", type="Goal", detail="Normal Goal"),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        assert "GOLES: Molina (35'), Messi (pen 43') - Weghorst (83')" in text
+
+    def test_goals_with_only_away_goals_leaves_home_side_empty(self):
+        """Triangulation: when one team has no goals, its side is an
+        empty string between `GOLES: ` and the dash.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=85, short="2H", home_goals=0, away_goals=1))
+        events = [
+            MatchEvent(minute=83, team="Holanda", player="Weghorst", type="Goal", detail="Normal Goal"),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        assert "GOLES:  - Weghorst (83')" in text
+
+    def test_goals_with_only_home_goals_leaves_away_side_empty(self):
+        """Triangulation: symmetric case for away.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=43, short="2H", home_goals=2, away_goals=0))
+        events = [
+            MatchEvent(minute=35, team="Argentina", player="Molina", type="Goal", detail="Normal Goal"),
+            MatchEvent(minute=43, team="Argentina", player="Messi", type="Goal", detail="Penalty"),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        assert "GOLES: Molina (35'), Messi (pen 43') - " in text
+
+
+# ---------------------------------------------------------------------------
+# Context text — stats section
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextStats:
+    def test_stats_with_none_collapses_to_single_line(self):
+        """Spec: 'Stats not yet loaded collapses to single line'.
+
+        When `home_stats is None` OR `away_stats is None`, the section
+        is exactly `ESTADÍSTICAS: No disponibles aún` and no per-line
+        POSESIÓN/TIROS/xG lines are emitted.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=15, short="1H"))
+
+        text = ms.get_context_text()
+
+        assert "ESTADÍSTICAS: No disponibles aún" in text
+        # No per-line output when stats are missing.
+        assert "POSESIÓN" not in text
+        assert "TIROS AL ARCO" not in text
+        assert "xG:" not in text
+
+    def test_stats_with_data_emits_three_lines_with_team_abbrs(self):
+        """Spec: POSESIÓN, TIROS AL ARCO, xG lines with first-3-chars
+        uppercased team abbrs. Argentina→ARG, Holanda→HOL.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_stats = TeamStats(
+            name="Argentina",
+            possession="50%",
+            shots_on_goal=3,
+            total_shots=7,
+            corners=3,
+            fouls=9,
+            offsides=1,
+            yellow_cards=1,
+            red_cards=0,
+            pass_accuracy="87%",
+            expected_goals="1.90",
+        )
+        away_stats = TeamStats(
+            name="Holanda",
+            possession="50%",
+            shots_on_goal=2,
+            total_shots=5,
+            corners=2,
+            fouls=10,
+            offsides=2,
+            yellow_cards=0,
+            red_cards=0,
+            pass_accuracy="85%",
+            expected_goals="1.20",
+        )
+        ms.update_fixture(
+            make_match_state(
+                elapsed=67,
+                short="2H",
+                home_goals=2,
+                away_goals=1,
+                home_stats=home_stats,
+                away_stats=away_stats,
+            )
+        )
+
+        text = ms.get_context_text()
+
+        assert "POSESIÓN: ARG 50% - HOL 50%" in text
+        assert "TIROS AL ARCO: ARG 3 - HOL 2" in text
+        assert "xG: ARG 1.90 - HOL 1.20" in text
+
+    def test_team_abbr_for_short_name_uses_full_uppercased(self):
+        """Spec edge case: team name < 3 chars uses the full name
+        uppercased as the abbr (no slicing to 0 chars).
+        """
+        from backend.services.match_state import _team_abbr
+
+        assert _team_abbr("PSG") == "PSG"
+        assert _team_abbr("Barça") == "BAR"
+        # Edge: exactly 2 chars → full name.
+        assert _team_abbr("FC") == "FC"
+        # Edge: 1 char → full name.
+        assert _team_abbr("A") == "A"
+
+
+# ---------------------------------------------------------------------------
+# Context text — standout players
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextStandouts:
+    def test_standout_section_header_includes_rating_label(self):
+        """Spec: header is `JUGADORES DESTACADOS (por rating):`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(
+            make_match_state(
+                elapsed=67,
+                short="2H",
+                home_players=[make_player("L. Messi", rating="8.5")],
+            )
+        )
+
+        text = ms.get_context_text()
+
+        assert "JUGADORES DESTACADOS (por rating):" in text
+
+    def test_standout_players_sorted_by_rating_descending(self):
+        """Spec triangulation: players with rating >= 7.0 are listed
+        in descending rating order. Cap at 3.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_players = [
+            make_player("De Paul", rating="7.2"),
+            make_player("L. Messi", rating="8.5"),
+            make_player("N. Molina", rating="7.8"),
+        ]
+        ms.update_fixture(
+            make_match_state(
+                elapsed=67,
+                short="2H",
+                home_players=home_players,
+            )
+        )
+
+        text = ms.get_context_text()
+
+        # Lines must appear in rating-descending order.
+        messi_idx = text.find("- L. Messi (8.5)")
+        molina_idx = text.find("- N. Molina (7.8)")
+        depaul_idx = text.find("- De Paul (7.2)")
+        assert messi_idx > 0 and molina_idx > 0 and depaul_idx > 0
+        assert messi_idx < molina_idx < depaul_idx
+
+    def test_standout_capped_at_three_players(self):
+        """Triangulation: even with 4 standouts, only 3 are listed.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_players = [
+            make_player("A", rating="9.0"),
+            make_player("B", rating="8.0"),
+            make_player("C", rating="7.5"),
+            make_player("D", rating="7.1"),
+        ]
+        ms.update_fixture(
+            make_match_state(elapsed=67, short="2H", home_players=home_players)
+        )
+
+        text = ms.get_context_text()
+
+        assert "- A (9.0)" in text
+        assert "- B (8.0)" in text
+        assert "- C (7.5)" in text
+        # D (7.1) is the 4th — MUST NOT appear in standouts.
+        assert "- D (7.1)" not in text
+
+    def test_standout_with_all_below_threshold_renders_sin_datos(self):
+        """Spec: when no player has rating >= 7.0, the section is
+        `JUGADORES DESTACADOS: Sin datos suficientes` (note: the
+        `(por rating):` header is REPLACED by `Sin datos suficientes`).
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_players = [
+            make_player("C. Romero", rating="6.9"),
+            make_player("N. Otamendi", rating="6.7"),
+        ]
+        ms.update_fixture(
+            make_match_state(elapsed=67, short="2H", home_players=home_players)
+        )
+
+        text = ms.get_context_text()
+
+        assert "JUGADORES DESTACADOS: Sin datos suficientes" in text
+        # Make sure the header-with-colon variant is NOT used here.
+        assert "JUGADORES DESTACADOS (por rating):" not in text
+
+
+# ---------------------------------------------------------------------------
+# Context text — weak players
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextWeak:
+    def test_weak_players_listed_sorted_ascending(self):
+        """Spec: 0 < rating < 6.5, sorted ascending (worst first). Cap at 2.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_players = [
+            make_player("L. Martínez", rating="6.1"),
+            make_player("M. Acuña", rating="6.3"),
+        ]
+        ms.update_fixture(
+            make_match_state(elapsed=67, short="2H", home_players=home_players)
+        )
+
+        text = ms.get_context_text()
+
+        # Worst (6.1) MUST appear before better (6.3).
+        worst_idx = text.find("- L. Martínez (6.1)")
+        better_idx = text.find("- M. Acuña (6.3)")
+        assert worst_idx > 0 and better_idx > 0
+        assert worst_idx < better_idx
+
+    def test_weak_players_capped_at_two(self):
+        """Triangulation: only 2 weak players are listed even if more qualify.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_players = [
+            make_player("P1", rating="5.5"),
+            make_player("P2", rating="5.8"),
+            make_player("P3", rating="6.0"),
+        ]
+        ms.update_fixture(
+            make_match_state(elapsed=67, short="2H", home_players=home_players)
+        )
+
+        text = ms.get_context_text()
+
+        assert "- P1 (5.5)" in text
+        assert "- P2 (5.8)" in text
+        assert "- P3 (6.0)" not in text
+
+    def test_weak_with_all_above_or_equal_6_5_renders_sin_datos(self):
+        """Spec: rating 6.5 or higher (or 0) is NOT weak.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_players = [
+            make_player("E. Martínez", rating="6.5"),  # boundary, NOT weak
+            make_player("R. De Paul", rating="6.7"),
+        ]
+        ms.update_fixture(
+            make_match_state(elapsed=67, short="2H", home_players=home_players)
+        )
+
+        text = ms.get_context_text()
+
+        assert "JUGADORES FLOJOS: Sin datos suficientes" in text
+
+    def test_weak_excludes_zero_rating(self):
+        """Triangulation: rating 0 (unrated, parsed from empty string)
+        MUST NOT be flagged as weak — the rule is `0 < rating < 6.5`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_players = [
+            make_player("Bench", rating="0"),  # would otherwise be the worst
+        ]
+        ms.update_fixture(
+            make_match_state(elapsed=67, short="2H", home_players=home_players)
+        )
+
+        text = ms.get_context_text()
+
+        assert "JUGADORES FLOJOS: Sin datos suficientes" in text
+
+
+# ---------------------------------------------------------------------------
+# Context text — substitutions
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextSubstitutions:
+    def test_substitution_with_event_renders_out_in_minute(self):
+        """Spec: subst events → `{out} → {in} ({minute}')`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=85, short="2H"))
+        events = [
+            MatchEvent(
+                minute=82,
+                team="Argentina",
+                player="L. Martínez",
+                type="subst",
+                detail="Substitution 1",
+                assist="L. Paredes",
+            ),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        assert "CAMBIOS REALIZADOS: L. Martínez → L. Paredes (82')" in text
+
+    def test_no_substitutions_renders_ninguno(self):
+        """Spec: empty subst events → `CAMBIOS REALIZADOS: Ninguno`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=15, short="1H"))
+
+        text = ms.get_context_text()
+
+        assert "CAMBIOS REALIZADOS: Ninguno" in text
+
+
+# ---------------------------------------------------------------------------
+# Context text — cards
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextCards:
+    def test_yellow_card_renders_with_yellow_emoji(self):
+        """Spec: 'Yellow Card' detail → 🟨.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=80, short="2H"))
+        events = [
+            MatchEvent(
+                minute=78,
+                team="Argentina",
+                player="N. Montiel",
+                type="Card",
+                detail="Yellow Card",
+            ),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        assert "TARJETAS: N. Montiel 🟨 (78')" in text
+
+    def test_red_card_renders_with_red_emoji(self):
+        """Spec: detail containing 'Red' → 🟥.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=80, short="2H"))
+        events = [
+            MatchEvent(
+                minute=60,
+                team="Argentina",
+                player="Some Player",
+                type="Card",
+                detail="Red Card",
+            ),
+        ]
+        ms.update_details(events, None, None, [], [])
+
+        text = ms.get_context_text()
+
+        assert "TARJETAS: Some Player 🟥 (60')" in text
+
+    def test_no_cards_renders_ninguna(self):
+        """Spec: empty cards → `TARJETAS: Ninguna`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=15, short="1H"))
+
+        text = ms.get_context_text()
+
+        assert "TARJETAS: Ninguna" in text
+
+
+# ---------------------------------------------------------------------------
+# Pre-kickoff snapshot — every empty variant
+# ---------------------------------------------------------------------------
+
+
+class TestPreKickoffSnapshot:
+    def test_pre_kickoff_uses_every_empty_section_variant(self):
+        """Spec: 'Pre-kickoff uses every empty-section variant'.
+
+        When events=[], stats=None, players=[], elapsed=0, every
+        section that has an empty variant must use it.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=0, short="1H", home_goals=0, away_goals=0))
+
+        text = ms.get_context_text()
+
+        assert "GOLES: Sin goles aún" in text
+        assert "ESTADÍSTICAS: No disponibles aún" in text
+        assert "JUGADORES DESTACADOS: Sin datos suficientes" in text
+        assert "JUGADORES FLOJOS: Sin datos suficientes" in text
+        assert "CAMBIOS REALIZADOS: Ninguno" in text
+        assert "TARJETAS: Ninguna" in text
+
+    def test_pre_kickoff_output_has_seven_sections_separated_by_blank_lines(self):
+        """Spec: 7 sections in fixed order, `\\n\\n` separator, single trailing `\\n`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(elapsed=0, short="1H"))
+
+        text = ms.get_context_text()
+
+        # Split on `\n\n` to count sections.
+        sections = text.split("\n\n")
+        # 7 sections + 1 (the trailing \n leaves a trailing empty after the last split).
+        assert len(sections) == 7
+        # Trailing newline: text MUST end with exactly one '\n'.
+        assert text.endswith("\n")
+        assert not text.endswith("\n\n")
+
+
+# ---------------------------------------------------------------------------
+# FULL SNAPSHOT — minute 67, all data populated, byte-pinned
+# ---------------------------------------------------------------------------
+
+
+class TestFullSnapshotMinute67:
+    def test_snapshot_at_minute_67_matches_pinned_format(self):
+        """Spec: 'Snapshot at minute 67 matches the pinned format'.
+
+        This is THE canonical snapshot. Build a hand-crafted state
+        at minute 67 with Argentina 2-1 Holanda, the 5 events listed
+        in the spec, populated stats, and standouts (no weak).
+        Assert the EXACT full output string with all 7 sections,
+        `\\n\\n` separators, and trailing `\\n`.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        home_stats = TeamStats(
+            name="Argentina",
+            possession="50%",
+            shots_on_goal=3,
+            total_shots=7,
+            corners=3,
+            fouls=9,
+            offsides=1,
+            yellow_cards=1,
+            red_cards=0,
+            pass_accuracy="87%",
+            expected_goals="1.90",
+        )
+        away_stats = TeamStats(
+            name="Holanda",
+            possession="50%",
+            shots_on_goal=2,
+            total_shots=5,
+            corners=2,
+            fouls=10,
+            offsides=2,
+            yellow_cards=0,
+            red_cards=0,
+            pass_accuracy="85%",
+            expected_goals="1.20",
+        )
+        home_players = [
+            make_player("E. Martínez", rating="6.7", dribbles_success=1, dribbles_attempts=2),
+            make_player(
+                "L. Messi",
+                rating="8.5",
+                goals=1,
+                assists=1,
+                key_passes=3,
+                dribbles_success=4,
+                dribbles_attempts=6,
+            ),
+            make_player(
+                "N. Molina",
+                rating="7.8",
+                goals=1,
+                key_passes=2,
+                dribbles_success=1,
+                dribbles_attempts=3,
+            ),
+            make_player("N. Otamendi", rating="6.7", dribbles_success=1, dribbles_attempts=2),
+        ]
+        events = [
+            MatchEvent(
+                minute=35,
+                team="Argentina",
+                player="N. Molina",
+                type="Goal",
+                detail="Normal Goal",
+                assist="L. Messi",
+            ),
+            MatchEvent(
+                minute=73,
+                team="Argentina",
+                player="L. Messi",
+                type="Goal",
+                detail="Penalty",
+            ),
+            MatchEvent(
+                minute=83,
+                team="Holanda",
+                player="W. Weghorst",
+                type="Goal",
+                detail="Normal Goal",
+                assist="D. Blind",
+            ),
+            MatchEvent(
+                minute=78,
+                team="Argentina",
+                player="N. Montiel",
+                type="Card",
+                detail="Yellow Card",
+            ),
+            MatchEvent(
+                minute=82,
+                team="Argentina",
+                player="L. Martínez",
+                type="subst",
+                detail="Substitution 1",
+                assist="L. Paredes",
+            ),
+        ]
+        ms = MatchStateManager()
+        ms.update_fixture(
+            make_match_state(
+                elapsed=67,
+                short="2H",
+                home_goals=2,
+                away_goals=1,
+                home_stats=home_stats,
+                away_stats=away_stats,
+                home_players=home_players,
+            )
+        )
+        ms.update_details(events, home_stats, away_stats, home_players, [])
+
+        text = ms.get_context_text()
+
+        expected = (
+            "⚽ Argentina 2 - 1 Holanda | Minuto 67 | 2do Tiempo\n"
+            "\n"
+            "GOLES: N. Molina (35'), L. Messi (pen 73') - W. Weghorst (83')\n"
+            "\n"
+            "POSESIÓN: ARG 50% - HOL 50%\n"
+            "TIROS AL ARCO: ARG 3 - HOL 2\n"
+            "xG: ARG 1.90 - HOL 1.20\n"
+            "\n"
+            "JUGADORES DESTACADOS (por rating):\n"
+            "- L. Messi (8.5) - 1 gol, 1 asistencia, 3 pases clave, 4/6 regates\n"
+            "- N. Molina (7.8) - 1 gol, 2 pases clave, 1/3 regates\n"
+            "\n"
+            "JUGADORES FLOJOS: Sin datos suficientes\n"
+            "\n"
+            "CAMBIOS REALIZADOS: L. Martínez → L. Paredes (82')\n"
+            "\n"
+            "TARJETAS: N. Montiel 🟨 (78')\n"
+        )
+        assert text == expected
+
+
+# ---------------------------------------------------------------------------
+# Player highlights helper
+# ---------------------------------------------------------------------------
+
+
+class TestPlayerHighlights:
+    def test_highlights_with_only_dribbles(self):
+        """Triangulation: 0 goals, 0 assists, 0 key passes → only
+        dribbles appear.
+        """
+        from backend.services.match_state import _player_highlights
+
+        p = make_player("X", rating="6.5", dribbles_success=2, dribbles_attempts=5)
+        # 0 goals, 0 assists, 0 key_passes → only dribbles shown.
+        result = _player_highlights(p)
+
+        assert result == "2/5 regates"
+
+    def test_highlights_with_one_goal_singular(self):
+        """Triangulation: singular `gol` for 1, plural `goles` for 2.
+        """
+        from backend.services.match_state import _player_highlights
+
+        p_singular = make_player("X", rating="6.5", goals=1)
+        p_plural = make_player("Y", rating="6.5", goals=2)
+
+        assert "1 gol," in _player_highlights(p_singular)
+        assert "2 goles," in _player_highlights(p_plural)
+
+    def test_highlights_pluralization_for_assists_and_passes(self):
+        """Triangulation: `asistencia/asistencias`, `pase/pases`.
+        """
+        from backend.services.match_state import _player_highlights
+
+        p_one = make_player("X", rating="6.5", goals=1, assists=1, key_passes=1, dribbles_success=1, dribbles_attempts=1)
+        p_multi = make_player("Y", rating="6.5", goals=2, assists=2, key_passes=2, dribbles_success=1, dribbles_attempts=1)
+
+        one = _player_highlights(p_one)
+        multi = _player_highlights(p_multi)
+
+        assert "1 gol, 1 asistencia, 1 pase clave" in one
+        assert "2 goles, 2 asistencias, 2 pases clave" in multi
+
+
+class TestParseRating:
+    def test_empty_string_parses_to_zero(self):
+        """Spec edge case: rating="" → 0.0 (a player who has not
+        received a rating MUST NOT appear in standouts OR weak).
+        """
+        from backend.services.match_state import _parse_rating
+
+        assert _parse_rating("") == 0.0
+        assert _parse_rating("0") == 0.0
+        assert _parse_rating("7.5") == 7.5
+        assert _parse_rating(None) == 0.0  # defensive
+
+    def test_valid_rating_parses_to_float(self):
+        """Triangulation: a typical rating string parses cleanly.
+        """
+        from backend.services.match_state import _parse_rating
+
+        assert _parse_rating("8.2") == 8.2
+        assert _parse_rating("6.0") == 6.0
+
+
+# ---------------------------------------------------------------------------
+# Prediction log
+# ---------------------------------------------------------------------------
+
+
+class TestPredictionLog:
+    def test_get_predictions_empty_initially(self):
+        """Triangulation: a fresh manager has no predictions.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+
+        assert ms.get_predictions() == []
+
+    def test_save_prediction_round_trips(self):
+        """Spec: 'Save then read round-trips'.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+
+        ms.save_prediction(momento=3, content="pred A")
+
+        preds = ms.get_predictions()
+        assert len(preds) == 1
+        assert preds[0].momento == 3
+        assert preds[0].content == "pred A"
+        # Timestamp is set to a tz-aware UTC datetime.
+        assert isinstance(preds[0].timestamp, datetime)
+        assert preds[0].timestamp.tzinfo is not None
+
+    def test_predictions_preserve_append_order(self):
+        """Spec: 'Predictions preserve append order'.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.save_prediction(momento=1, content="A")
+        ms.save_prediction(momento=3, content="B")
+        ms.save_prediction(momento=6, content="C")
+
+        preds = ms.get_predictions()
+        assert [p.momento for p in preds] == [1, 3, 6]
+        assert [p.content for p in preds] == ["A", "B", "C"]
+
+    def test_save_prediction_momento_above_six_raises_value_error(self):
+        """Spec: 'Out-of-range momento is rejected'.
+
+        The Pydantic Prediction model enforces momento in 1..=6;
+        momento=7 MUST raise a ValidationError (a subclass of
+        ValueError).
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+
+        with pytest.raises((ValueError, ValidationError)):
+            ms.save_prediction(momento=7, content="x")
+
+    def test_save_prediction_momento_below_one_raises(self):
+        """Triangulation: momento=0 is also out of range.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+
+        with pytest.raises((ValueError, ValidationError)):
+            ms.save_prediction(momento=0, content="x")
+
+    def test_get_predictions_returns_a_copy(self):
+        """Triangulation: get_predictions returns a copy, not the
+        internal list. Mutating the returned list MUST NOT affect
+        the next call.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.save_prediction(momento=1, content="A")
+
+        preds = ms.get_predictions()
+        preds.clear()
+
+        assert len(ms.get_predictions()) == 1
+
+
+# ---------------------------------------------------------------------------
+# get_context_text gating
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextGating:
+    def test_get_context_text_before_update_fixture_raises(self):
+        """Spec: get_state() raises before update_fixture. So must
+        get_context_text() — it depends on the same state.
+        """
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+
+        with pytest.raises(RuntimeError):
+            ms.get_context_text()
+
+
+# ---------------------------------------------------------------------------
+# Module surface
+# ---------------------------------------------------------------------------
+
+
+class TestModuleSurface:
+    def test_period_names_constant_is_exported(self):
+        """Spec: the PERIOD_NAMES map is part of the public surface.
+        """
+        from backend.services.match_state import PERIOD_NAMES
+
+        assert PERIOD_NAMES == {
+            "1H": "1er Tiempo",
+            "HT": "Entretiempo",
+            "2H": "2do Tiempo",
+            "FT": "Final",
+        }
