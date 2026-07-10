@@ -566,12 +566,12 @@
                     "statistics": [
                         {
                             "games": {
-                                "minutes": 101,
+                                "minutes": 0,
                                 "number": 10,
                                 "position": "F",
-                                "rating": "6.1",
+                                "rating": null,
                                 "captain": false,
-                                "substitute": false
+                                "substitute": true
                             },
                             "offsides": 0,
                             "shots": {
@@ -579,9 +579,9 @@
                                 "on": 1
                             },
                             "goals": {
-                                "total": 0,
+                                "total": null,
                                 "conceded": 0,
-                                "assists": 0,
+                                "assists": null,
                                 "saves": 0
                             },
                             "passes": {
@@ -590,8 +590,8 @@
                                 "accuracy": "78%"
                             },
                             "duels": {
-                                "total": 18,
-                                "won": 3
+                                "total": null,
+                                "won": null
                             },
                             "dribbles": {
                                 "attempts": 2,
@@ -626,12 +626,12 @@
                     "statistics": [
                         {
                             "games": {
-                                "minutes": 101,
+                                "minutes": 0,
                                 "number": 10,
                                 "position": "F",
-                                "rating": "6.5",
+                                "rating": null,
                                 "captain": false,
-                                "substitute": false
+                                "substitute": true
                             },
                             "offsides": 0,
                             "shots": {
@@ -639,9 +639,9 @@
                                 "on": 1
                             },
                             "goals": {
-                                "total": 0,
+                                "total": null,
                                 "conceded": 0,
-                                "assists": 0,
+                                "assists": null,
                                 "saves": 0
                             },
                             "passes": {
@@ -650,8 +650,8 @@
                                 "accuracy": "78%"
                             },
                             "duels": {
-                                "total": 19,
-                                "won": 7
+                                "total": null,
+                                "won": null
                             },
                             "dribbles": {
                                 "attempts": 3,
@@ -1235,12 +1235,12 @@
                     "statistics": [
                         {
                             "games": {
-                                "minutes": 101,
+                                "minutes": 0,
                                 "number": 10,
                                 "position": "F",
-                                "rating": "6.3",
+                                "rating": null,
                                 "captain": false,
-                                "substitute": false
+                                "substitute": true
                             },
                             "offsides": 0,
                             "shots": {
@@ -1248,9 +1248,9 @@
                                 "on": 0
                             },
                             "goals": {
-                                "total": 0,
+                                "total": null,
                                 "conceded": 0,
-                                "assists": 0,
+                                "assists": null,
                                 "saves": 0
                             },
                             "passes": {
@@ -1259,8 +1259,8 @@
                                 "accuracy": "76%"
                             },
                             "duels": {
-                                "total": 16,
-                                "won": 4
+                                "total": null,
+                                "won": null
                             },
                             "dribbles": {
                                 "attempts": 5,
@@ -1295,12 +1295,12 @@
                     "statistics": [
                         {
                             "games": {
-                                "minutes": 101,
+                                "minutes": 0,
                                 "number": 10,
                                 "position": "F",
-                                "rating": "7.9",
+                                "rating": null,
                                 "captain": false,
-                                "substitute": false
+                                "substitute": true
                             },
                             "offsides": 0,
                             "shots": {
@@ -1308,9 +1308,9 @@
                                 "on": 3
                             },
                             "goals": {
-                                "total": 2,
+                                "total": null,
                                 "conceded": 0,
-                                "assists": 0,
+                                "assists": null,
                                 "saves": 0
                             },
                             "passes": {
@@ -1319,8 +1319,8 @@
                                 "accuracy": "72%"
                             },
                             "duels": {
-                                "total": 13,
-                                "won": 6
+                                "total": null,
+                                "won": null
                             },
                             "dribbles": {
                                 "attempts": 1,

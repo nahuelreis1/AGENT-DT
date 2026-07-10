@@ -16,8 +16,8 @@
                 {"type": "Offsides", "value": 0},
                 {"type": "Yellow Cards", "value": 0},
                 {"type": "Red Cards", "value": 0},
-                {"type": "Passes Accurate", "value": "92%"},
-                {"type": "Expected Goals", "value": "0.18"}
+                {"type": "Passes accurate", "value": "92%"},
+                {"type": "expected_goals", "value": "0.18"}
             ]
         },
         {
@@ -31,8 +31,8 @@
                 {"type": "Offsides", "value": 1},
                 {"type": "Yellow Cards", "value": 0},
                 {"type": "Red Cards", "value": 0},
-                {"type": "Passes Accurate", "value": "84%"},
-                {"type": "Expected Goals", "value": "0.05"}
+                {"type": "Passes accurate", "value": "84%"},
+                {"type": "expected_goals", "value": "0.05"}
             ]
         }
     ]

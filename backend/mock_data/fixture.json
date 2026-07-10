@@ -15,8 +15,8 @@
                 "periods": {"first": 1670610600, "second": 1670614200},
                 "venue": {"id": 49, "name": "Lusail Stadium", "city": "Lusail"},
                 "status": {
-                    "long": "Match Finished",
-                    "short": "FT",
+                    "long": "Match Finished After Penalty",
+                    "short": "PEN",
                     "elapsed": 120
                 }
             },
