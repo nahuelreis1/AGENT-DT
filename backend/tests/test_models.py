@@ -43,10 +43,37 @@ class TestFixtureStatus:
         with pytest.raises(ValidationError):
             FixtureStatus(elapsed=0, short="", long="Not Started")
 
-    def test_unknown_short_value_is_rejected(self):
-        """Triangulation: any value outside the Literal set must be rejected."""
-        with pytest.raises(ValidationError):
-            FixtureStatus(elapsed=10, short="3H", long="Extra Half")
+    def test_status_NS_is_accepted(self):
+        """Spec fix: live API emits 'NS' (Not Started) — must be accepted."""
+        status = FixtureStatus(elapsed=0, short="NS", long="Not Started")
+        assert status.short == "NS"
+
+    def test_status_AET_is_accepted(self):
+        """Spec fix: live API emits 'AET' (After Extra Time) — must be accepted."""
+        status = FixtureStatus(elapsed=120, short="AET", long="After Extra Time")
+        assert status.short == "AET"
+
+    def test_status_PEN_is_accepted(self):
+        """Spec fix: live API emits 'PEN' (Penalty Shootout end) — must be accepted."""
+        status = FixtureStatus(elapsed=120, short="PEN", long="Match Finished After Penalty")
+        assert status.short == "PEN"
+
+    @pytest.mark.parametrize(
+        "short_value",
+        [
+            "TBD", "NS", "1H", "HT", "2H", "ET", "BT", "P",
+            "SUSP", "INT", "FT", "AET", "PEN", "PST", "CANC",
+            "ABD", "AWD", "WO", "LIVE",
+        ],
+    )
+    def test_all_18_api_statuses_accepted(self, short_value):
+        """Spec fix: all 18 API-Football v3 statuses must be accepted.
+
+        Previously `short` was a `Literal` with only 4 values; the
+        live API emits 18 — the Literal would crash on first live call.
+        """
+        status = FixtureStatus(elapsed=0, short=short_value, long="x")
+        assert status.short == short_value
 
     def test_long_must_be_non_empty(self):
         """Triangulation: the min_length=1 constraint on `long` is enforced."""
@@ -250,6 +277,35 @@ class TestPlayerStats:
         assert isinstance(player.rating, str)
         assert player.rating == "8.2"
 
+    def test_playerstats_with_only_name_and_position_uses_zero_and_empty_defaults(self):
+        """Spec fix: live API sends nulls for substitute players.
+
+        PlayerStats must be constructible with only `name` and
+        `position` provided — all other fields default to 0 (ints),
+        '' (strings), or False (bool).
+        """
+        player = PlayerStats(name="L. Sub", position="M")
+        assert player.name == "L. Sub"
+        assert player.position == "M"
+        assert player.rating == ""
+        assert player.minutes == 0
+        assert player.goals == 0
+        assert player.assists == 0
+        assert player.shots_total == 0
+        assert player.shots_on == 0
+        assert player.passes_total == 0
+        assert player.key_passes == 0
+        assert player.pass_accuracy == ""
+        assert player.duels_won == 0
+        assert player.duels_total == 0
+        assert player.dribbles_success == 0
+        assert player.dribbles_attempts == 0
+        assert player.fouls_committed == 0
+        assert player.fouls_drawn == 0
+        assert player.yellow_cards == 0
+        assert player.red_cards == 0
+        assert player.substitute is False
+
 
 class TestTeamStats:
     def test_possession_stays_string(self):
@@ -293,6 +349,25 @@ class TestTeamStats:
         assert isinstance(stats.shots_on_goal, int)
         assert stats.shots_on_goal == 2
         assert stats.total_shots == 6
+
+    def test_teamstats_with_only_name_uses_zero_and_empty_defaults(self):
+        """Spec fix: live API may omit optional stats.
+
+        TeamStats must be constructible with only `name` provided —
+        all other fields default to 0 (ints) or '' (strings).
+        """
+        stats = TeamStats(name="Argentina")
+        assert stats.name == "Argentina"
+        assert stats.possession == ""
+        assert stats.shots_on_goal == 0
+        assert stats.total_shots == 0
+        assert stats.corners == 0
+        assert stats.fouls == 0
+        assert stats.offsides == 0
+        assert stats.yellow_cards == 0
+        assert stats.red_cards == 0
+        assert stats.pass_accuracy == ""
+        assert stats.expected_goals == ""
 
 
 # ---------------------------------------------------------------------------
