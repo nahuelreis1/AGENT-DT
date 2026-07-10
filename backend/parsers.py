@@ -23,6 +23,12 @@ from backend.models import (
 # Map API-Football stat-type strings to the corresponding `TeamStats`
 # field name. The boolean flag marks numeric vs string fields so the
 # parser can apply the right null-defaulting rule.
+#
+# Note: keys must match the LIVE API byte-for-byte. The real
+# API-Football v3 uses Title Case for most fields, but TWO fields
+# use different casing in the live response:
+#   - "Passes accurate" (lowercase 'a', NOT "Passes Accurate")
+#   - "expected_goals" (snake_case, NOT "Expected Goals")
 STAT_TYPE_MAP: dict[str, tuple[str, bool]] = {
     "Ball Possession": ("possession", False),
     "Shots on Goal": ("shots_on_goal", True),
@@ -32,8 +38,8 @@ STAT_TYPE_MAP: dict[str, tuple[str, bool]] = {
     "Offsides": ("offsides", True),
     "Yellow Cards": ("yellow_cards", True),
     "Red Cards": ("red_cards", True),
-    "Passes Accurate": ("pass_accuracy", False),
-    "Expected Goals": ("expected_goals", False),
+    "Passes accurate": ("pass_accuracy", False),
+    "expected_goals": ("expected_goals", False),
 }
 
 # Event types we model in `MatchEvent`. Anything else is silently
@@ -177,6 +183,11 @@ def parse_players(
     `items` is treated as home, the second as away. The parser
     reads `statistics[0]` of each player entry — the v3 envelope
     wraps the stats in a one-element list.
+
+    All fields are read via `.get()` and routed through
+    `_safe_int` / `_safe_str` so that substitute players with
+    `null` stats (no minutes played, no rating yet) do NOT crash
+    the parser.
     """
     parsed: list[list[PlayerStats]] = []
     for team_block in items:
@@ -190,28 +201,29 @@ def parse_players(
             duels = stats["duels"]
             dribbles = stats["dribbles"]
             fouls = stats["fouls"]
+            cards = stats["cards"]
             players.append(
                 PlayerStats(
                     name=player_block["player"]["name"],
                     position=games["position"],
-                    rating=games["rating"],
-                    minutes=games["minutes"],
-                    goals=goals["total"],
-                    assists=goals["assists"],
-                    shots_total=shots["total"],
-                    shots_on=shots["on"],
-                    passes_total=passes["total"],
-                    key_passes=passes["key"],
-                    pass_accuracy=passes["accuracy"],
-                    duels_won=duels["won"],
-                    duels_total=duels["total"],
-                    dribbles_success=dribbles["success"],
-                    dribbles_attempts=dribbles["attempts"],
-                    fouls_committed=fouls["committed"],
-                    fouls_drawn=fouls["drawn"],
-                    yellow_cards=stats["cards"]["yellow"],
-                    red_cards=stats["cards"]["red"],
-                    substitute=games["substitute"],
+                    rating=_safe_str(games.get("rating")),
+                    minutes=_safe_int(games.get("minutes")),
+                    goals=_safe_int(goals.get("total")),
+                    assists=_safe_int(goals.get("assists")),
+                    shots_total=_safe_int(shots.get("total")),
+                    shots_on=_safe_int(shots.get("on")),
+                    passes_total=_safe_int(passes.get("total")),
+                    key_passes=_safe_int(passes.get("key")),
+                    pass_accuracy=_safe_str(passes.get("accuracy")),
+                    duels_won=_safe_int(duels.get("won")),
+                    duels_total=_safe_int(duels.get("total")),
+                    dribbles_success=_safe_int(dribbles.get("success")),
+                    dribbles_attempts=_safe_int(dribbles.get("attempts")),
+                    fouls_committed=_safe_int(fouls.get("committed")),
+                    fouls_drawn=_safe_int(fouls.get("drawn")),
+                    yellow_cards=_safe_int(cards.get("yellow")),
+                    red_cards=_safe_int(cards.get("red")),
+                    substitute=bool(games.get("substitute", False)),
                 )
             )
         parsed.append(players)

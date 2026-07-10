@@ -95,7 +95,12 @@ def make_team_statistics(
     shots_on_goal: int | None,
     total_shots: int | None,
 ) -> dict:
-    """Build a `/fixtures/statistics` response element for one team."""
+    """Build a `/fixtures/statistics` response element for one team.
+
+    Uses the exact API-Football v3 stat-type strings: "Passes accurate"
+    (lowercase 'a') and "expected_goals" (snake_case). Earlier versions
+    of the parser used Title Case keys that don't match the live API.
+    """
     return {
         "team": {"id": team_id, "name": team_name, "logo": "url"},
         "statistics": [
@@ -107,8 +112,8 @@ def make_team_statistics(
             make_stat_entry("Offsides", 2),
             make_stat_entry("Yellow Cards", 2),
             make_stat_entry("Red Cards", 0),
-            make_stat_entry("Passes Accurate", "87%"),
-            make_stat_entry("Expected Goals", "1.78"),
+            make_stat_entry("Passes accurate", "87%"),
+            make_stat_entry("expected_goals", "1.78"),
         ],
     }
 
@@ -539,8 +544,8 @@ class TestParseStatistics:
                     make_stat_entry("Offsides", 2),
                     make_stat_entry("Yellow Cards", 2),
                     make_stat_entry("Red Cards", 0),
-                    make_stat_entry("Passes Accurate", "87%"),
-                    make_stat_entry("Expected Goals", "1.78"),
+                    make_stat_entry("Passes accurate", "87%"),
+                    make_stat_entry("expected_goals", "1.78"),
                     # Unknown stat types the parser must ignore.
                     make_stat_entry("Shots Outside Box", 1),
                     make_stat_entry("Brand New Metric 2099", "yes"),
@@ -683,6 +688,74 @@ class TestParsePlayers:
 
         assert home == []
         assert away == []
+
+    def test_player_with_all_null_stats_parses_to_defaults(self):
+        """Spec fix: live API sends null for many stats on substitute
+        players (no minutes played, no rating, etc.). The parser must
+        NOT crash on null fields — it must default to 0 / "" via the
+        existing `_safe_int` / `_safe_str` helpers.
+
+        Construct a single player dict with every numeric and string
+        field set to `None`, then assert the parser produces a valid
+        `PlayerStats` with the field defaults from the model.
+        """
+        null_player = {
+            "player": {"id": 0, "name": "L. Sub", "photo": "url"},
+            "statistics": [
+                {
+                    "games": {
+                        "minutes": None,
+                        "number": 10,
+                        "position": "M",
+                        "rating": None,
+                        "captain": False,
+                        "substitute": True,
+                    },
+                    "offsides": None,
+                    "shots": {"total": None, "on": None},
+                    "goals": {"total": None, "conceded": None, "assists": None, "saves": None},
+                    "passes": {"total": None, "key": None, "accuracy": None},
+                    "duels": {"total": None, "won": None},
+                    "dribbles": {"attempts": None, "success": None, "past": None},
+                    "fouls": {"drawn": None, "committed": None},
+                    "cards": {"yellow": None, "yellowred": None, "red": None},
+                    "penalty": {
+                        "won": None,
+                        "commited": None,
+                        "scored": None,
+                        "missed": None,
+                        "saved": None,
+                    },
+                }
+            ],
+        }
+        items = [
+            make_team_players(team_id=26, team_name="Argentina", players=[null_player])
+        ]
+        home, _ = parse_players(items)
+
+        assert len(home) == 1
+        p = home[0]
+        assert p.name == "L. Sub"
+        assert p.position == "M"
+        assert p.rating == ""
+        assert p.minutes == 0
+        assert p.shots_total == 0
+        assert p.shots_on == 0
+        assert p.goals == 0
+        assert p.assists == 0
+        assert p.passes_total == 0
+        assert p.key_passes == 0
+        assert p.pass_accuracy == ""
+        assert p.duels_won == 0
+        assert p.duels_total == 0
+        assert p.dribbles_success == 0
+        assert p.dribbles_attempts == 0
+        assert p.fouls_committed == 0
+        assert p.fouls_drawn == 0
+        assert p.yellow_cards == 0
+        assert p.red_cards == 0
+        assert p.substitute is True
 
 
 # ---------------------------------------------------------------------------
