@@ -128,31 +128,66 @@ class MockDataSource:
 
 
 class LiveDataSource:
-    """Stub for the live API-Football data source.
+    """Adapter that turns an `APIFootballClient` into a `DataSource`.
 
-    Full implementation lands in change 2 (HTTP client + caching).
-    The stub satisfies the `DataSource` Protocol so the factory
-    can return it without downstream code branching on the type.
+    The live source is structurally identical to the mock source:
+    `get_fixture` returns a `MatchState`, `get_details(momento)`
+    returns a 5-tuple of (events, home_stats, away_stats, home_players,
+    away_players). The only difference is WHERE the raw v3 envelope
+    comes from — the live source fetches it from the API, the mock
+    source reads it from disk. Both share the same `parse_*` path
+    in `backend.parsers`.
+
+    `momento` is accepted for Protocol compatibility but currently
+    has no effect on the live side — the API does not expose a
+    "momento" concept, the live source always fetches the current
+    snapshot. The argument is reserved for future caching / snapshot
+    layers.
     """
 
+    def __init__(self, client: "APIFootballClient", fixture_id: int) -> None:
+        self._client = client
+        self._fixture_id = fixture_id
+
     async def get_fixture(self) -> MatchState:
-        raise NotImplementedError("LiveDataSource.get_fixture is implemented in change 2")
+        """Fetch the fixture and parse it into a `MatchState`."""
+        raw = await self._client.fetch_fixture(self._fixture_id)
+        return parse_fixture(raw)
 
     async def get_details(
         self, momento: int
     ) -> tuple[list[MatchEvent], TeamStats | None, TeamStats | None, list[PlayerStats], list[PlayerStats]]:
-        raise NotImplementedError("LiveDataSource.get_details is implemented in change 2")
+        """Fetch events, statistics, and players; return the 5-tuple.
+
+        `momento` is currently ignored — see class docstring.
+        """
+        events = parse_events(await self._client.fetch_events(self._fixture_id))
+        home_stats, away_stats = parse_statistics(
+            await self._client.fetch_statistics(self._fixture_id)
+        )
+        home_players, away_players = parse_players(
+            await self._client.fetch_players(self._fixture_id)
+        )
+        return events, home_stats, away_stats, home_players, away_players
 
 
 def create_data_source(config: Settings) -> DataSource:
     """Factory: return a `MockDataSource` or `LiveDataSource` per `config.MOCK_MODE`.
 
     The returned object ALWAYS satisfies the `DataSource` Protocol,
-    so callers can treat both modes uniformly. Live mode is the
-    conservative path — if `MOCK_MODE` is falsy we return the stub
-    (the `Settings` validator already ensured the live credentials
-    are present by the time we get here).
+    so callers can treat both modes uniformly. Live mode constructs
+    a fresh `APIFootballClient` per process and wraps it in a
+    `LiveDataSource` — the polling loop's lifespan owns the client
+    shutdown via `LiveDataSource._client.aclose()` (or via the
+    detector's own client lifecycle in change 3).
+
+    The `APIFootballClient` import is local to keep this module
+    importable even when httpx is not installed (e.g. lightweight
+    tooling) — the live code path is never hit in mock mode.
     """
     if config.MOCK_MODE:
         return MockDataSource(_MOCK_DATA_DIR)
-    return LiveDataSource()
+    from backend.services.api_football import APIFootballClient
+
+    client = APIFootballClient(api_key=config.API_FOOTBALL_KEY)
+    return LiveDataSource(client=client, fixture_id=config.FIXTURE_ID)
