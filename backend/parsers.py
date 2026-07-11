@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 
 from backend.models import (
     FixtureStatus,
+    LineupPlayer,
+    LineupTeam,
     MatchEvent,
     MatchState,
     PlayerStats,
@@ -231,3 +233,74 @@ def parse_players(
     home_players = parsed[0] if len(parsed) >= 1 else []
     away_players = parsed[1] if len(parsed) >= 2 else []
     return (home_players, away_players)
+
+
+def parse_lineups(
+    items: list[dict],
+) -> tuple[LineupTeam | None, LineupTeam | None]:
+    """Convert a `/fixtures/lineups` response array into a team tuple.
+
+    Returns ``(home_lineup, away_lineup)``. The first element in
+    ``items`` is treated as home, the second as away (same pattern
+    as ``parse_statistics``). Empty input (``[]``) returns
+    ``(None, None)``.
+
+    The ``coach`` field is optional — a missing ``coach`` key produces
+    ``coach_name = None`` rather than raising. Player ``grid`` is
+    passed through as a string or ``None``. All fields are extracted
+    through ``_safe_int`` / ``_safe_str`` so null values become the
+    model's default.
+
+    Spec: openspec/changes/enrich-context/specs/api-football-parsing/spec.md
+    """
+    if not items:
+        return (None, None)
+
+    parsed: list[LineupTeam] = []
+    for team_block in items:
+        team = team_block["team"]
+        starters = [
+            _parse_lineup_player(p) for p in team_block.get("startXI", [])
+        ]
+        subs = [
+            _parse_lineup_player(p) for p in team_block.get("substitutes", [])
+        ]
+        coach_block = team_block.get("coach")
+        coach_name = _safe_str(coach_block["name"]) if coach_block else None
+        if coach_name == "":
+            coach_name = None
+
+        parsed.append(
+            LineupTeam(
+                team_id=team["id"],
+                team_name=team["name"],
+                formation=team_block["formation"],
+                startXI=starters,
+                substitutes=subs,
+                coach_name=coach_name,
+            )
+        )
+
+    home_lineup = parsed[0] if len(parsed) >= 1 else None
+    away_lineup = parsed[1] if len(parsed) >= 2 else None
+    return (home_lineup, away_lineup)
+
+
+def _parse_lineup_player(raw: dict) -> LineupPlayer:
+    """Parse a single player entry from a ``startXI``/``substitutes`` array.
+
+    The v3 envelope wraps the player identity in a nested ``player``
+    dict (``player.id``, ``player.name``). ``number``, ``pos``, and
+    ``grid`` are siblings of that dict. ``grid`` may be ``null`` →
+    ``None``.
+    """
+    player = raw["player"]
+    grid = raw.get("grid")
+    # _safe_int returns 0 for None/non-int, matching the model's default.
+    return LineupPlayer(
+        player_id=_safe_int(player.get("id")),
+        name=player["name"],
+        number=_safe_int(raw.get("number")),
+        pos=raw["pos"],
+        grid=grid if isinstance(grid, str) else None,
+    )

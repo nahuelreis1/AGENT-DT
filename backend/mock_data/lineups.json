@@ -1,0 +1,77 @@
+{
+    "get": "fixtures/lineups",
+    "parameters": {"fixture": "868019"},
+    "errors": [],
+    "results": 2,
+    "paging": {"current": 1, "total": 1},
+    "response": [
+        {
+            "team": {
+                "id": 26,
+                "name": "Argentina",
+                "logo": "https://media.api-sports.io/football/teams/26.png",
+                "colors": {"player": {"primary": "75AADB", "number": "12284C", "border": "12284C"}, "goalkeeper": {"primary": "000000", "number": "FFFFFF", "border": "FFFFFF"}}
+            },
+            "formation": "4-3-3",
+            "startXI": [
+                {"player": {"id": 3045, "name": "E. Martínez", "photo": "url"}, "number": 23, "pos": "GK", "grid": "1:1"},
+                {"player": {"id": 28983, "name": "N. Molina", "photo": "url"}, "number": 26, "pos": "DF", "grid": "2:4"},
+                {"player": {"id": 152109, "name": "C. Romero", "photo": "url"}, "number": 13, "pos": "DF", "grid": "2:4"},
+                {"player": {"id": 1521, "name": "N. Otamendi", "photo": "url"}, "number": 19, "pos": "DF", "grid": "2:4"},
+                {"player": {"id": 1100, "name": "M. Acuña", "photo": "url"}, "number": 8, "pos": "DF", "grid": "2:4"},
+                {"player": {"id": 6796, "name": "R. De Paul", "photo": "url"}, "number": 7, "pos": "MF", "grid": "3:3"},
+                {"player": {"id": 76000, "name": "A. Mac Allister", "photo": "url"}, "number": 20, "pos": "MF", "grid": "3:3"},
+                {"player": {"id": 283428, "name": "Enzo Fernández", "photo": "url"}, "number": 24, "pos": "MF", "grid": "3:3"},
+                {"player": {"id": 154, "name": "L. Messi", "photo": "url"}, "number": 10, "pos": "FW", "grid": "4:3"},
+                {"player": {"id": 3664, "name": "L. Martínez", "photo": "url"}, "number": 22, "pos": "FW", "grid": "4:3"},
+                {"player": {"id": 67972, "name": "J. Álvarez", "photo": "url"}, "number": 9, "pos": "FW", "grid": "4:3"}
+            ],
+            "substitutes": [
+                {"player": {"id": 778, "name": "L. Paredes", "photo": "url"}, "number": 5, "pos": "MF", "grid": null},
+                {"player": {"id": 3099, "name": "Á. Di María", "photo": "url"}, "number": 11, "pos": "FW", "grid": null},
+                {"player": {"id": 2881, "name": "G. Rulli", "photo": "url"}, "number": 12, "pos": "GK", "grid": null},
+                {"player": {"id": 2842, "name": "N. Tagliafico", "photo": "url"}, "number": 3, "pos": "DF", "grid": null},
+                {"player": {"id": 1117, "name": "L. Ocampos", "photo": "url"}, "number": 15, "pos": "FW", "grid": null},
+                {"player": {"id": 2853, "name": "P. Dybala", "photo": "url"}, "number": 21, "pos": "FW", "grid": null},
+                {"player": {"id": 2852, "name": "G. Lo Celso", "photo": "url"}, "number": 18, "pos": "MF", "grid": null},
+                {"player": {"id": 2831, "name": "N. Molina", "photo": "url"}, "number": 4, "pos": "DF", "grid": null},
+                {"player": {"id": 2830, "name": "J. Correa", "photo": "url"}, "number": 16, "pos": "FW", "grid": null}
+            ],
+            "coach": {"id": 2, "name": "L. Scaloni", "photo": "url"}
+        },
+        {
+            "team": {
+                "id": 41,
+                "name": "Netherlands",
+                "logo": "https://media.api-sports.io/football/teams/41.png",
+                "colors": {"player": {"primary": "F35546", "number": "FFFFFF", "border": "FFFFFF"}, "goalkeeper": {"primary": "000000", "number": "FFFFFF", "border": "FFFFFF"}}
+            },
+            "formation": "3-4-1-2",
+            "startXI": [
+                {"player": {"id": 28576, "name": "A. Noppert", "photo": "url"}, "number": 1, "pos": "GK", "grid": "1:1"},
+                {"player": {"id": 28577, "name": "J. Timber", "photo": "url"}, "number": 2, "pos": "DF", "grid": "2:3"},
+                {"player": {"id": 28578, "name": "V. van Dijk", "photo": "url"}, "number": 4, "pos": "DF", "grid": "2:3"},
+                {"player": {"id": 28579, "name": "N. Aké", "photo": "url"}, "number": 5, "pos": "DF", "grid": "2:3"},
+                {"player": {"id": 28580, "name": "D. Dumfries", "photo": "url"}, "number": 22, "pos": "MF", "grid": "3:4"},
+                {"player": {"id": 28581, "name": "F. de Jong", "photo": "url"}, "number": 21, "pos": "MF", "grid": "3:4"},
+                {"player": {"id": 28582, "name": "S. Berghuis", "photo": "url"}, "number": 8, "pos": "MF", "grid": "3:4"},
+                {"player": {"id": 28583, "name": "D. Klaassen", "photo": "url"}, "number": 14, "pos": "MF", "grid": "3:4"},
+                {"player": {"id": 28584, "name": "N. Lang", "photo": "url"}, "number": 17, "pos": "MF", "grid": "4:1"},
+                {"player": {"id": 28585, "name": "C. Gakpo", "photo": "url"}, "number": 8, "pos": "FW", "grid": "5:2"},
+                {"player": {"id": 28586, "name": "M. Depay", "photo": "url"}, "number": 10, "pos": "FW", "grid": "5:2"}
+            ],
+            "substitutes": [
+                {"player": {"id": 28587, "name": "M. de Roon", "photo": "url"}, "number": 6, "pos": "MF", "grid": null},
+                {"player": {"id": 28588, "name": "T. Malacia", "photo": "url"}, "number": 16, "pos": "DF", "grid": null},
+                {"player": {"id": 28589, "name": "W. Weghorst", "photo": "url"}, "number": 9, "pos": "FW", "grid": null},
+                {"player": {"id": 28590, "name": "M. de Ligt", "photo": "url"}, "number": 3, "pos": "DF", "grid": null},
+                {"player": {"id": 28591, "name": "T. Reijnders", "photo": "url"}, "number": 19, "pos": "MF", "grid": null},
+                {"player": {"id": 28592, "name": "J. Bijlow", "photo": "url"}, "number": 12, "pos": "GK", "grid": null},
+                {"player": {"id": 28593, "name": "X. Simons", "photo": "url"}, "number": 7, "pos": "MF", "grid": null},
+                {"player": {"id": 28594, "name": "L. de Jong", "photo": "url"}, "number": 11, "pos": "FW", "grid": null},
+                {"player": {"id": 28595, "name": "K. Scherpen", "photo": "url"}, "number": 23, "pos": "GK", "grid": null}
+            ],
+            "coach": {"id": 3, "name": "L. van Gaal", "photo": "url"}
+        }
+    ]
+}

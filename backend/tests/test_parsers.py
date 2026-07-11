@@ -12,8 +12,8 @@ network layer and the parser.
 """
 import pytest
 
-from backend.models import MatchEvent, MatchState, PlayerStats, TeamStats
-from backend.parsers import parse_events, parse_fixture, parse_players, parse_statistics
+from backend.models import MatchEvent, MatchState, PlayerStats, TeamStats, LineupPlayer, LineupTeam
+from backend.parsers import parse_events, parse_fixture, parse_lineups, parse_players, parse_statistics
 
 
 # ---------------------------------------------------------------------------
@@ -759,14 +759,138 @@ class TestParsePlayers:
 
 
 # ---------------------------------------------------------------------------
+# Requirement: parse_lineups
+# ---------------------------------------------------------------------------
+
+def make_lineup_player_dict(
+    player_id: int = 1,
+    name: str = "L. Messi",
+    number: int = 10,
+    pos: str = "GK",
+    grid: str | None = "1:1",
+) -> dict:
+    """Build a single player entry inside a team's startXI/substitutes array."""
+    return {
+        "player": {"id": player_id, "name": name},
+        "number": number,
+        "pos": pos,
+        "grid": grid,
+    }
+
+
+def make_lineup_team_dict(
+    team_id: int = 26,
+    team_name: str = "Argentina",
+    formation: str = "4-3-3",
+    starters: list[dict] | None = None,
+    subs: list[dict] | None = None,
+    coach_name: str | None = "L. Scaloni",
+) -> dict:
+    """Build a /fixtures/lineups response element matching the v3 shape."""
+    d: dict = {
+        "team": {"id": team_id, "name": team_name, "logo": "url"},
+        "formation": formation,
+        "startXI": starters or [],
+        "substitutes": subs or [],
+    }
+    if coach_name is not None:
+        d["coach"] = {"id": 1, "name": coach_name}
+    return d
+
+
+class TestParseLineups:
+    def test_both_teams_present_returns_populated_tuple(self):
+        """Spec: 'Both teams present returns populated tuple'."""
+        starters = [make_lineup_player_dict(player_id=i, name=f"P{i}", pos="DF") for i in range(11)]
+        items = [
+            make_lineup_team_dict(team_id=26, team_name="Argentina", formation="4-3-3", starters=starters),
+            make_lineup_team_dict(team_id=41, team_name="Netherlands", formation="3-4-1-2", starters=starters),
+        ]
+        home, away = parse_lineups(items)
+
+        assert home is not None and away is not None
+        assert isinstance(home, LineupTeam) and isinstance(away, LineupTeam)
+        assert home.formation == "4-3-3"
+        assert away.formation == "3-4-1-2"
+        assert len(home.startXI) == 11
+        assert len(away.startXI) == 11
+
+    def test_empty_input_returns_none_none(self):
+        """Spec: 'Empty input returns (None, None)'."""
+        assert parse_lineups([]) == (None, None)
+
+    def test_missing_coach_field_produces_none(self):
+        """Spec: 'Missing coach field produces None'."""
+        item = make_lineup_team_dict(coach_name=None)  # omits coach key
+        home, _ = parse_lineups([item])
+
+        assert home is not None
+        assert home.coach_name is None
+
+    def test_null_grid_defaults_to_none(self):
+        """Spec: 'Null grid defaults to None'."""
+        starter = make_lineup_player_dict(grid=None)
+        item = make_lineup_team_dict(starters=[starter])
+        home, _ = parse_lineups([item])
+
+        assert home is not None
+        assert home.startXI[0].grid is None
+
+    def test_single_element_input_returns_team_none(self):
+        """Spec: 'Single-element input returns (team, None)'."""
+        item = make_lineup_team_dict(team_name="Argentina")
+        home, away = parse_lineups([item])
+
+        assert home is not None
+        assert home.team_name == "Argentina"
+        assert away is None
+
+    def test_trusts_input_order_home_then_away(self):
+        """Spec: 'Trusts input order home then away'."""
+        items = [
+            make_lineup_team_dict(team_id=26, team_name="Argentina", formation="4-3-3"),
+            make_lineup_team_dict(team_id=41, team_name="Netherlands", formation="3-4-1-2"),
+        ]
+        home, away = parse_lineups(items)
+
+        assert home is not None and away is not None
+        assert home.team_name == "Argentina"
+        assert away.team_name == "Netherlands"
+
+    def test_player_fields_extracted_correctly(self):
+        """Triangulation: player_id, name, number, pos, grid all round-trip."""
+        starter = make_lineup_player_dict(
+            player_id=1521, name="L. Messi", number=10, pos="FW", grid="3:4"
+        )
+        item = make_lineup_team_dict(starters=[starter])
+        home, _ = parse_lineups([item])
+
+        p = home.startXI[0]
+        assert p.player_id == 1521
+        assert p.name == "L. Messi"
+        assert p.number == 10
+        assert p.pos == "FW"
+        assert p.grid == "3:4"
+
+    def test_substitutes_parsed(self):
+        """Triangulation: substitutes array is parsed into LineupPlayer list."""
+        sub = make_lineup_player_dict(player_id=99, name="L. Paredes", number=5, pos="MF", grid=None)
+        item = make_lineup_team_dict(subs=[sub])
+        home, _ = parse_lineups([item])
+
+        assert len(home.substitutes) == 1
+        assert home.substitutes[0].name == "L. Paredes"
+
+
+# ---------------------------------------------------------------------------
 # Module-level sanity: the parsers must be importable as `parse_*` symbols.
 # This guards against a rename that would silently break the public API.
 # ---------------------------------------------------------------------------
 
 class TestModuleSurface:
-    def test_all_four_parsers_are_exported(self):
+    def test_all_five_parsers_are_exported(self):
         import backend.parsers as parsers
 
-        for name in ("parse_fixture", "parse_events", "parse_statistics", "parse_players"):
+        for name in ("parse_fixture", "parse_events", "parse_statistics", "parse_players", "parse_lineups"):
             assert hasattr(parsers, name), f"backend.parsers missing {name!r}"
             assert callable(getattr(parsers, name))

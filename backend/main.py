@@ -84,6 +84,18 @@ async def lifespan(app: FastAPI):
     initial_state = await app.state.data_source.get_fixture()
     app.state.match_state.update_fixture(initial_state)
 
+    # Fetch lineups once at startup (not per-momento). Lineups are
+    # loaded before any milestone fires so the context text can
+    # include FORMACIONES and TODOS LOS JUGADORES from the first
+    # prediction. A (None, None) result (204 pre-kickoff, or missing
+    # lineups.json in mock mode) is a no-op — update_lineups stores
+    # None/None and the sections collapse to their fallbacks.
+    try:
+        home_lineup, away_lineup = await app.state.data_source.get_lineups()
+        app.state.match_state.update_lineups(home_lineup, away_lineup)
+    except Exception as exc:
+        log.warning("lineups fetch failed: %s", exc)
+
     app.state.milestone_detector = MilestoneDetector(
         data_source=app.state.data_source,
         match_state=app.state.match_state,

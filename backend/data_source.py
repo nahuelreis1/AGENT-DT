@@ -21,10 +21,11 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from backend.config import Settings
-from backend.models import MatchEvent, MatchState, PlayerStats, TeamStats
+from backend.models import LineupTeam, MatchEvent, MatchState, PlayerStats, TeamStats
 from backend.parsers import (
     parse_events,
     parse_fixture,
+    parse_lineups,
     parse_players,
     parse_statistics,
 )
@@ -66,6 +67,8 @@ class DataSource(Protocol):
     async def get_details(
         self, momento: int
     ) -> tuple[list[MatchEvent], TeamStats | None, TeamStats | None, list[PlayerStats], list[PlayerStats]]: ...
+
+    async def get_lineups(self) -> tuple[LineupTeam | None, LineupTeam | None]: ...
 
 
 class MockDataSource:
@@ -126,6 +129,24 @@ class MockDataSource:
         home_players, away_players = parse_players(self._load_json(f"players_{key}.json"))
         return events, home_stats, away_stats, home_players, away_players
 
+    async def get_lineups(self) -> tuple[LineupTeam | None, LineupTeam | None]:
+        """Read the single ``lineups.json`` and parse it.
+
+        Unlike the per-momento ``events_{key}.json`` etc., there is
+        a single ``lineups.json`` file — lineups are loaded once at
+        startup, not per-momento. If the file does not exist, return
+        ``(None, None)`` so the pre-lineup fallback path is
+        exercisable in mock mode (graceful degradation, NOT
+        ``FileNotFoundError``).
+
+        Spec: openspec/changes/enrich-context/specs/data-source-strategy/spec.md
+        """
+        path = self.mock_dir / "lineups.json"
+        if not path.exists():
+            return (None, None)
+        raw = self._load_json("lineups.json")
+        return parse_lineups(raw)
+
 
 class LiveDataSource:
     """Adapter that turns an `APIFootballClient` into a `DataSource`.
@@ -169,6 +190,19 @@ class LiveDataSource:
             await self._client.fetch_players(self._fixture_id)
         )
         return events, home_stats, away_stats, home_players, away_players
+
+    async def get_lineups(self) -> tuple[LineupTeam | None, LineupTeam | None]:
+        """Fetch lineups from the API and parse them.
+
+        Calls ``client.fetch_lineups(fixture_id)`` and passes the
+        result through ``parse_lineups`` (the shared parser seam). A
+        ``fetch_lineups`` result of ``[]`` (204 case) round-trips to
+        ``(None, None)`` via ``parse_lineups``.
+
+        Spec: openspec/changes/enrich-context/specs/data-source-strategy/spec.md
+        """
+        raw = await self._client.fetch_lineups(self._fixture_id)
+        return parse_lineups(raw)
 
 
 def create_data_source(config: Settings) -> DataSource:

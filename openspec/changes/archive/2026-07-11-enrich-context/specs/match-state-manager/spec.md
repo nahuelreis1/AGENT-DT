@@ -1,28 +1,6 @@
-# match-state-manager Specification
+# Delta for match-state-manager
 
-## Purpose
-
-In-memory holder for the live `MatchState` and the `Prediction` log. Owns the lifecycle methods the polling loop calls, recomputes the score from Goal events (overriding the API's incremental value), and produces the 9-section context text consumed by the n8n AI Agent prompts. Mode-agnostic — the same class backs mock and live data sources.
-
-## Requirements
-
-### Requirement: Construction and Fixture Update
-
-`MatchStateManager` MUST take no constructor arguments. `update_fixture(match_state: MatchState) -> None` MUST store the supplied `MatchState` (overwriting any prior state, including the events list, stats, players, and lineups — `update_fixture` is a "snapshot" update). `get_state() -> MatchState` MUST return the stored state or raise `RuntimeError` if `update_fixture()` was never called.
-(Previously: snapshot update covered events, stats, and players; now also resets lineups)
-
-#### Scenario: Uninitialized state raises on get_state
-
-- GIVEN a freshly constructed `MatchStateManager()`
-- WHEN `get_state()` is called
-- THEN a `RuntimeError` is raised
-
-#### Scenario: Fixture update makes state readable
-
-- GIVEN a `MatchState` with `fixture_id=868019`, `home.goals=0`, `away.goals=0`, `status.short="1H"`
-- WHEN `update_fixture(state)` is called
-- THEN `get_state().fixture_id == 868019`
-- AND `get_state().status.short == "1H"`
+## ADDED Requirements
 
 ### Requirement: Lineup Update
 
@@ -47,6 +25,26 @@ In-memory holder for the live `MatchState` and the `Prediction` log. Owns the li
 - WHEN `update_lineups(None, None)` is called
 - THEN a `RuntimeError` is raised
 
+## MODIFIED Requirements
+
+### Requirement: Construction and Fixture Update
+
+`MatchStateManager` MUST take no constructor arguments. `update_fixture(match_state: MatchState) -> None` MUST store the supplied `MatchState` (overwriting any prior state, including the events list, stats, players, and lineups — `update_fixture` is a "snapshot" update). `get_state() -> MatchState` MUST return the stored state or raise `RuntimeError` if `update_fixture()` was never called.
+(Previously: snapshot update covered events, stats, and players; now also resets lineups)
+
+#### Scenario: Uninitialized state raises on get_state
+
+- GIVEN a freshly constructed `MatchStateManager()`
+- WHEN `get_state()` is called
+- THEN a `RuntimeError` is raised
+
+#### Scenario: Fixture update makes state readable
+
+- GIVEN a `MatchState` with `fixture_id=868019`, `home.goals=0`, `away.goals=0`, `status.short="1H"`
+- WHEN `update_fixture(state)` is called
+- THEN `get_state().fixture_id == 868019`
+- AND `get_state().status.short == "1H"`
+
 ### Requirement: Detail Update and Score Reconciliation
 
 `update_details(events, home_stats, away_stats, home_players, away_players) -> None` MUST replace the stored `events`, `home_stats`, `away_stats`, `home_players`, and `away_players` with the supplied values. It MUST NOT touch the stored lineups (`home_lineup` / `away_lineup` remain unchanged by a details update — lineups are set once via `update_lineups`). It MUST THEN recompute `home.goals` and `away.goals` from the event list using the following rules, which OVERRIDE any value previously set by `update_fixture()`:
@@ -56,7 +54,6 @@ In-memory holder for the live `MatchState` and the `Prediction` log. Owns the li
 - A candidate goal with `"Own Goal" in detail` MUST be attributed to the OPPOSING (BENEFITED) team, NOT to `event.team`.
 
 This logic MUST be shared with the goals section text (via a shared helper, e.g. `_goals_for_team`).
-(Previously: "Reconciliation is idempotent" scenario dropped; now requires the lineup-preservation invariant)
 
 #### Scenario: Min 15 with empty events yields 0-0
 
@@ -142,54 +139,3 @@ The Stats section MUST emit one line per TeamStats field (10 lines). The Standou
 - GIVEN event: `Goal Argentina Molina 35' detail="Own Goal"`, Argentina=home, Netherlands=away
 - WHEN `get_context_text()` is called
 - THEN the `GOLES` section lists `Molina (og 35')` under Netherlands' side
-
-### Requirement: Prediction Log
-
-`save_prediction(momento: int, content: str) -> None` MUST append a `Prediction(momento=momento, timestamp=datetime.now(tz=UTC), content=content)` to the in-memory list. `get_predictions() -> list[Prediction]` MUST return all saved predictions in append order. Both methods MUST raise `ValueError` if `momento` is outside the closed range `1..=6` (Pydantic `Prediction` validation).
-
-#### Scenario: Save then read round-trips
-
-- GIVEN an empty prediction list
-- WHEN `save_prediction(momento=3, content="pred A")` is called
-- THEN `get_predictions()` returns one `Prediction` with `momento == 3` and `content == "pred A"`
-
-#### Scenario: Predictions preserve append order
-
-- GIVEN three calls to `save_prediction` with momenti `1, 3, 6`
-- WHEN `get_predictions()` is called
-- THEN the result is a list of 3 `Prediction`s in the same momento order
-
-#### Scenario: Out-of-range momento is rejected
-
-- GIVEN `save_prediction(momento=7, content="x")`
-- WHEN called
-- THEN a `ValueError` is raised by the `Prediction` model validator
-
-### Requirement: Mode-Agnostic Behavior
-
-`MatchStateManager` MUST work identically in mock and live modes — it consumes the same `MatchState` model from either data source. The mocking boundary is `create_data_source()`, not this class. Tests MAY construct the manager directly with `MatchState` instances; no env, no factory.
-
-### Requirement: MOMENTO_STATUSES Constant
-
-`MOMENTO_STATUSES` MUST be a `dict[int, FixtureStatus]` mapping momento keys `1..6` to the corresponding fixture statuses:
-
-| Momento | elapsed | short | long |
-|---------|---------|-------|------|
-| 1 | 15 | `1H` | `First Half` |
-| 2 | 30 | `1H` | `First Half` |
-| 3 | 45 | `HT` | `Halftime` |
-| 4 | 60 | `2H` | `Second Half` |
-| 5 | 75 | `2H` | `Second Half` |
-| 6 | 120 | `PEN` | `Match Finished After Penalty` |
-
-#### Scenario: Momento 1 maps to first half at 15 minutes
-
-- GIVEN the `MOMENTO_STATUSES` constant
-- WHEN `MOMENTO_STATUSES[1]` is accessed
-- THEN `elapsed == 15` and `short == "1H"`
-
-#### Scenario: Momento 6 maps to match finished at 120 minutes
-
-- GIVEN the `MOMENTO_STATUSES` constant
-- WHEN `MOMENTO_STATUSES[6]` is accessed
-- THEN `elapsed == 120` and `short == "PEN"`

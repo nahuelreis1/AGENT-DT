@@ -98,6 +98,42 @@ class TeamStats(BaseModel):
     expected_goals: str = ""
 
 
+class LineupPlayer(BaseModel):
+    """A single player in a lineup (starter or substitute).
+
+    `grid` is the API-Football positional grid string (e.g. "1:1" for
+    a lone goalkeeper, "2:4" for a back four). It is `None` when the
+    API does not provide it (e.g. substitutes have no grid).
+
+    Spec: openspec/changes/enrich-context/specs/match-data-models/spec.md
+    """
+
+    player_id: int = Field(default=0, ge=0, description="0 = unknown")
+    name: str = Field(min_length=1)
+    number: int = Field(default=0, ge=0)
+    pos: str = Field(min_length=1, description="API position code: GK, DF, MF, FW")
+    grid: str | None = None
+
+
+class LineupTeam(BaseModel):
+    """One team's full lineup: formation, starting XI, substitutes, coach.
+
+    `startXI` and `substitutes` default to empty lists so a
+    `LineupTeam` can be constructed with just the team identity and
+    formation. `coach_name` is `None` when the API does not provide
+    a coach (some fixtures omit it).
+
+    Spec: openspec/changes/enrich-context/specs/match-data-models/spec.md
+    """
+
+    team_id: int = Field(gt=0)
+    team_name: str = Field(min_length=1)
+    formation: str = Field(min_length=1, description="e.g. '4-3-3'")
+    startXI: list[LineupPlayer] = []
+    substitutes: list[LineupPlayer] = []
+    coach_name: str | None = None
+
+
 class MatchState(BaseModel):
     """Complete snapshot of a fixture at a given moment.
 
@@ -113,6 +149,8 @@ class MatchState(BaseModel):
     away_stats: TeamStats | None = None
     home_players: list[PlayerStats] = []
     away_players: list[PlayerStats] = []
+    home_lineup: LineupTeam | None = None
+    away_lineup: LineupTeam | None = None
     last_updated: datetime
 
 

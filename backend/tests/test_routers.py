@@ -71,23 +71,25 @@ class TestContexto:
     async def test_contexto_ok(self, mock_client):
         """Spec: GIVEN the manager holds initialized state, GET
         /partido/contexto returns 200 with `Content-Type:
-        text/plain; charset=utf-8` and the 7-section context body.
+        text/plain; charset=utf-8` and the 9-section context body.
         """
         resp = await mock_client.get("/partido/contexto")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "text/plain; charset=utf-8"
         text = resp.text
-        # All 7 section markers present (Header, Goals, Stats, Standout,
-        # Weak, Substitutions, Cards).
+        # All 9 section markers present (Header, Formaciones, Goals, Stats,
+        # Standout, Weak, All Players, Substitutions, Cards).
         assert "⚽" in text
+        assert "FORMACIONES:" in text
         assert "GOLES:" in text
         assert "ESTADÍSTICAS:" in text
         assert "JUGADORES DESTACADOS" in text
         assert "JUGADORES FLOJOS" in text
+        assert "TODOS LOS JUGADORES" in text
         assert "CAMBIOS REALIZADOS:" in text
         assert "TARJETAS:" in text
-        # 7 sections separated by 6 blank lines, one trailing newline.
-        assert text.count("\n\n") == 6
+        # 9 sections separated by 8 blank lines, one trailing newline.
+        assert text.count("\n\n") == 8
         assert text.endswith("\n")
 
     async def test_contexto_uninit_500(self, uninit_client):

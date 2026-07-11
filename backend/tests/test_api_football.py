@@ -362,3 +362,63 @@ class TestAclose:
 
         with pytest.raises(RuntimeError):
             await client._client.get(f"{BASE_URL}fixtures")
+
+
+# ---------------------------------------------------------------------------
+# Requirement: fetch_lineups (fifth fetch method + 204 handling)
+# ---------------------------------------------------------------------------
+
+
+class TestFetchLineups:
+    @respx.mock
+    async def test_fetch_lineups_200_returns_response_list_and_increments_count(self):
+        """Spec: 'fetch_lineups returns the response list' + request_count++."""
+        lineups = [
+            {"team": {"name": "Argentina"}, "formation": "4-3-3", "startXI": [], "substitutes": []},
+            {"team": {"name": "Netherlands"}, "formation": "3-4-1-2", "startXI": [], "substitutes": []},
+        ]
+        respx.get(f"{BASE_URL}fixtures/lineups").mock(
+            return_value=httpx.Response(200, json=v3_envelope(lineups))
+        )
+
+        client = APIFootballClient(api_key="test-key")
+        try:
+            result = await client.fetch_lineups(868019)
+            assert result == lineups
+            assert client.request_count == 1
+        finally:
+            await client.aclose()
+
+    @respx.mock
+    async def test_fetch_lineups_204_returns_empty_list_without_raising(self):
+        """Spec: 'fetch_lineups 204 returns empty list without raising'.
+
+        A 204 (no content) means lineups are not yet published. The
+        method MUST return [] (NOT raise HTTPStatusError) so the
+        caller can treat it as (None, None) after parsing.
+        """
+        respx.get(f"{BASE_URL}fixtures/lineups").mock(
+            return_value=httpx.Response(204)
+        )
+
+        client = APIFootballClient(api_key="test-key")
+        try:
+            result = await client.fetch_lineups(868019)
+            assert result == []
+            assert client.request_count == 1
+        finally:
+            await client.aclose()
+
+    @respx.mock
+    async def test_fetch_lineups_4xx_raises_http_status_error(self):
+        """Spec: 4xx response raises HTTPStatusError (shared with other endpoints)."""
+        respx.get(f"{BASE_URL}fixtures/lineups").mock(
+            return_value=httpx.Response(401, json={"errors": ["invalid key"]})
+        )
+
+        client = APIFootballClient(api_key="bad-key")
+        try:
+            with pytest.raises(httpx.HTTPStatusError):
+                await client.fetch_lineups(868019)
+        finally:
+            await client.aclose()

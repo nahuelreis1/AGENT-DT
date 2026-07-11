@@ -11,6 +11,8 @@ from pydantic import ValidationError
 
 from backend.models import (
     FixtureStatus,
+    LineupPlayer,
+    LineupTeam,
     MatchEvent,
     MatchState,
     PlayerStats,
@@ -466,3 +468,115 @@ class TestPrediction:
                 timestamp=datetime(2022, 12, 9, 20, 0, 0, tzinfo=timezone.utc),
                 content="x",
             )
+
+
+# ---------------------------------------------------------------------------
+# Requirement: LineupPlayer and LineupTeam
+# ---------------------------------------------------------------------------
+
+class TestLineupPlayer:
+    def test_grid_null_defaults_to_none(self):
+        """Spec: 'LineupPlayer with grid null defaults to None'."""
+        player = LineupPlayer(
+            player_id=1, name="Dibu", number=23, pos="GK", grid=None
+        )
+        assert player.grid is None
+
+    def test_grid_string_preserved(self):
+        """Spec: 'LineupPlayer with grid string preserved'."""
+        player = LineupPlayer(
+            player_id=1, name="Dibu", number=23, pos="GK", grid="1:1"
+        )
+        assert player.grid == "1:1"
+
+    def test_player_id_zero_is_valid(self):
+        """Spec: player_id >= 0 (0 = unknown). Triangulation."""
+        player = LineupPlayer(player_id=0, name="Unknown", number=0, pos="GK")
+        assert player.player_id == 0
+
+    def test_number_defaults_to_zero(self):
+        """Spec: every int field defaults to 0. Triangulation: number
+        is not always present in partial lineup data."""
+        player = LineupPlayer(player_id=1, name="Dibu", pos="GK")
+        assert player.number == 0
+
+
+class TestLineupTeam:
+    def test_missing_coach_defaults_to_none(self):
+        """Spec: 'LineupTeam with missing coach defaults to None'."""
+        team = LineupTeam(
+            team_id=26,
+            team_name="Argentina",
+            formation="4-3-3",
+            startXI=[],
+            substitutes=[],
+        )
+        assert team.coach_name is None
+
+    def test_empty_startxi_and_substitutes_is_valid(self):
+        """Spec: 'LineupTeam with empty startXI and substitutes is valid'."""
+        team = LineupTeam(
+            team_id=26, team_name="Argentina", formation="4-3-3"
+        )
+        assert team.startXI == []
+        assert team.substitutes == []
+
+    def test_coach_name_preserved_when_provided(self):
+        """Triangulation: coach_name is stored when given."""
+        team = LineupTeam(
+            team_id=26,
+            team_name="Argentina",
+            formation="4-3-3",
+            coach_name="L. Scaloni",
+        )
+        assert team.coach_name == "L. Scaloni"
+
+    def test_team_id_must_be_positive(self):
+        """Triangulation: gt=0 on team_id."""
+        with pytest.raises(ValidationError):
+            LineupTeam(team_id=0, team_name="X", formation="4-3-3")
+
+
+class TestMatchStateLineupFields:
+    def test_match_state_defaults_lineups_to_none(self):
+        """Spec: MatchState constructed without lineup fields has
+        home_lineup is None AND away_lineup is None."""
+        state = MatchState(
+            fixture_id=868019,
+            status=FixtureStatus(elapsed=0, short="1H", long="First Half"),
+            home=TeamScore(id=26, name="Argentina", goals=0),
+            away=TeamScore(id=24, name="Holland", goals=0),
+            events=[],
+            home_stats=None,
+            away_stats=None,
+            home_players=[],
+            away_players=[],
+            last_updated=datetime(2022, 12, 9, 20, 0, 0, tzinfo=timezone.utc),
+        )
+        assert state.home_lineup is None
+        assert state.away_lineup is None
+
+    def test_match_state_with_populated_lineups_round_trips(self):
+        """Spec: 'MatchState with populated lineups round-trips'."""
+        home_lineup = LineupTeam(
+            team_id=26, team_name="Argentina", formation="4-3-3",
+        )
+        away_lineup = LineupTeam(
+            team_id=41, team_name="Netherlands", formation="3-4-1-2",
+        )
+        state = MatchState(
+            fixture_id=868019,
+            status=FixtureStatus(elapsed=0, short="1H", long="First Half"),
+            home=TeamScore(id=26, name="Argentina", goals=0),
+            away=TeamScore(id=41, name="Netherlands", goals=0),
+            events=[],
+            home_stats=None,
+            away_stats=None,
+            home_players=[],
+            away_players=[],
+            home_lineup=home_lineup,
+            away_lineup=away_lineup,
+            last_updated=datetime(2022, 12, 9, 20, 0, 0, tzinfo=timezone.utc),
+        )
+        assert state.home_lineup.formation == "4-3-3"
+        assert state.away_lineup.formation == "3-4-1-2"

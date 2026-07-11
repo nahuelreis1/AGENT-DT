@@ -30,6 +30,7 @@ from typing import Callable
 
 from backend.models import (
     FixtureStatus,
+    LineupTeam,
     MatchEvent,
     MatchState,
     PlayerStats,
@@ -90,6 +91,23 @@ _ASIST_SINGULAR = "asistencia"
 _ASIST_PLURAL = "asistencias"
 _PASE_SINGULAR = "pase"
 _PASE_PLURAL = "pases"
+_FALTA_SINGULAR = "falta"
+_FALTA_PLURAL = "faltas"
+_FALTA_RECIBIDA_SINGULAR = "falta recibida"
+_FALTA_RECIBIDA_PLURAL = "faltas recibidas"
+_AMARILLA_SINGULAR = "amarilla"
+_AMARILLA_PLURAL = "amarillas"
+_ROJA_SINGULAR = "roja"
+_ROJA_PLURAL = "rojas"
+
+# Position abbreviation map for the all-players section.
+# API-Football lineup `pos` codes (GK/DF/MF/FW) → Spanish abbr.
+_POS_ABBR: dict[str, str] = {
+    "G": "ARQ",
+    "D": "DEF",
+    "M": "MED",
+    "F": "ATK",
+}
 
 
 class MatchStateManager:
@@ -160,6 +178,27 @@ class MatchStateManager:
         # when the state was last touched.
         self._state.last_updated = datetime.now(tz=timezone.utc)
 
+    def update_lineups(
+        self,
+        home_lineup: LineupTeam | None,
+        away_lineup: LineupTeam | None,
+    ) -> None:
+        """Store team lineups on the current ``MatchState``.
+
+        Accepts ``(None, None)`` without raising (pre-kickoff / 204
+        case). When called before ``update_fixture()``, raises
+        ``RuntimeError`` (same contract as ``update_details``).
+
+        Lineups are set ONCE (at startup, not per-momento). A
+        subsequent ``update_details`` call MUST NOT touch the stored
+        lineups.
+        """
+        if self._state is None:
+            raise RuntimeError("MatchState not initialized — call update_fixture first")
+
+        self._state.home_lineup = home_lineup
+        self._state.away_lineup = away_lineup
+
     # ------------------------------------------------------------------ #
     # State accessors
     # ------------------------------------------------------------------ #
@@ -171,20 +210,23 @@ class MatchStateManager:
         return self._state
 
     def get_context_text(self) -> str:
-        """Build the 7-section context text per `context-text-format`.
+        """Build the 9-section context text per `context-text-format`.
 
-        Sections (in fixed order): Header, Goals, Stats, Standout
-        players, Weak players, Substitutions, Cards. Separated by
-        `\\n\\n`; one trailing `\\n`. Empty sections use their
-        documented fallback (e.g. `GOLES: Sin goles aún`).
+        Sections (in fixed order): Header, Formaciones, Goals, Stats,
+        Standout players, Weak players, All Players, Substitutions,
+        Cards. Separated by ``\\n\\n``; one trailing ``\\n``. Empty
+        sections use their documented fallback (e.g.
+        ``GOLES: Sin goles aún``).
         """
         state = self.get_state()
         sections = [
             self._header_section(state),
+            self._lineups_section(state),
             self._goals_section(state),
             self._stats_section(state),
             self._standout_players_section(state),
             self._weak_players_section(state),
+            self._all_players_section(state),
             self._substitutions_section(state),
             self._cards_section(state),
         ]
@@ -258,7 +300,13 @@ class MatchStateManager:
 
     @staticmethod
     def _stats_section(state: MatchState) -> str:
-        """Three lines POSESIÓN/TIROS AL ARCO/xG, or fallback if no stats."""
+        """Ten lines POSESIÓN…TARJETAS ROJAS, or fallback if no stats.
+
+        One line per ``TeamStats`` field (10 lines total) in this
+        order: POSESIÓN, TIROS AL ARCO, xG, TIROS TOTALES, CÓRNERES,
+        FOULTAS, OFFSIDE, PASES ACERTADOS, TARJETAS AMARILLAS,
+        TARJETAS ROJAS.
+        """
         if state.home_stats is None or state.away_stats is None:
             return "ESTADÍSTICAS: No disponibles aún"
 
@@ -269,7 +317,14 @@ class MatchStateManager:
         return (
             f"POSESIÓN: {home_abbr} {hs.possession} - {away_abbr} {aws.possession}\n"
             f"TIROS AL ARCO: {home_abbr} {hs.shots_on_goal} - {away_abbr} {aws.shots_on_goal}\n"
-            f"xG: {home_abbr} {hs.expected_goals} - {away_abbr} {aws.expected_goals}"
+            f"xG: {home_abbr} {hs.expected_goals} - {away_abbr} {aws.expected_goals}\n"
+            f"TIROS TOTALES: {home_abbr} {hs.total_shots} - {away_abbr} {aws.total_shots}\n"
+            f"CÓRNERES: {home_abbr} {hs.corners} - {away_abbr} {aws.corners}\n"
+            f"FOULTAS: {home_abbr} {hs.fouls} - {away_abbr} {aws.fouls}\n"
+            f"OFFSIDE: {home_abbr} {hs.offsides} - {away_abbr} {aws.offsides}\n"
+            f"PASES ACERTADOS: {home_abbr} {hs.pass_accuracy} - {away_abbr} {aws.pass_accuracy}\n"
+            f"TARJETAS AMARILLAS: {home_abbr} {hs.yellow_cards} - {away_abbr} {aws.yellow_cards}\n"
+            f"TARJETAS ROJAS: {home_abbr} {hs.red_cards} - {away_abbr} {aws.red_cards}"
         )
 
     @staticmethod
@@ -295,6 +350,71 @@ class MatchStateManager:
             header="JUGADORES FLOJOS:",
             fallback="JUGADORES FLOJOS: Sin datos suficientes",
         )
+
+    @staticmethod
+    def _lineups_section(state: MatchState) -> str:
+        """``FORMACIONES: {home} {f1} - {away} {f2}`` or fallback.
+
+        When either ``home_lineup`` or ``away_lineup`` is ``None``
+        (lineups not loaded, e.g. 204 pre-kickoff), the section
+        collapses to ``FORMACIONES: No disponibles aún``.
+
+        Spec: openspec/changes/enrich-context/specs/context-text-format/spec.md
+        """
+        if state.home_lineup is None or state.away_lineup is None:
+            return "FORMACIONES: No disponibles aún"
+        return (
+            f"FORMACIONES: {state.home_lineup.team_name} "
+            f"{state.home_lineup.formation} - "
+            f"{state.away_lineup.team_name} {state.away_lineup.formation}"
+        )
+
+    @staticmethod
+    def _all_players_section(state: MatchState) -> str:
+        """``TODOS LOS JUGADORES:`` — all starters grouped by team.
+
+        Lists all starters from the stored lineups, grouped by team
+        with a formation prefix. Players are listed in lineup input
+        order. When no starters are available (both lineups
+        ``None``), the section collapses to
+        ``TODOS LOS JUGADORES: Sin datos suficientes``.
+
+        Each player line joins ``LineupPlayer`` (from the lineup)
+        with ``PlayerStats`` (from the players endpoint) by name.
+        If no matching ``PlayerStats`` is found, the rating is
+        ``"—"`` and all stats default to zero.
+
+        Spec: openspec/changes/enrich-context/specs/context-text-format/spec.md
+        """
+        if state.home_lineup is None and state.away_lineup is None:
+            return "TODOS LOS JUGADORES: Sin datos suficientes"
+
+        # Build name → PlayerStats lookup for the compact highlights.
+        # Searches both home_players and away_players since the
+        # lineup player names may match either roster.
+        stats_map: dict[str, PlayerStats] = {}
+        for p in state.home_players + state.away_players:
+            stats_map[p.name] = p
+
+        lines: list[str] = ["TODOS LOS JUGADORES:"]
+        for lineup in (state.home_lineup, state.away_lineup):
+            if lineup is None:
+                continue
+            lines.append(f"{lineup.team_name} ({lineup.formation}):")
+            for player in lineup.startXI:
+                stats = stats_map.get(
+                    player.name,
+                    PlayerStats(name=player.name, position=player.pos),
+                )
+                pos_abbr = _pos_abbr(player.pos)
+                rating = stats.rating if stats.rating else "—"
+                compact = _compact_highlights(stats)
+                lines.append(
+                    f"- {player.name} ({pos_abbr}, {rating}) - "
+                    f"{stats.minutes}', {compact}"
+                )
+
+        return "\n".join(lines)
 
     @staticmethod
     def _substitutions_section(state: MatchState) -> str:
@@ -398,16 +518,91 @@ def _parse_rating(rating: str | None) -> float:
 
 
 def _player_highlights(p: PlayerStats) -> str:
-    """Format goals, assists, key passes, and dribbles for one player.
+    """Format enriched highlights for standout/weak player sections.
 
-    Goals/assists/key_passes are shown only when non-zero (the spec
-    says "only show non-zero stats except dribbles, which are always
-    shown"). Dribbles are always shown as `success/attempts regates`.
-    Pluralization is `gol/goles`, `asistencia/asistencias`,
-    `pase/pases` based on the count.
+    Minutes always shown (first). Dribbles always shown. Other
+    stats are zero-suppressed (shown only when > 0):
+
+    - ``{minutes}'`` — always
+    - ``{n} gol/goles`` — if goals > 0
+    - ``{n} asistencia/asistencias`` — if assists > 0
+    - ``{shots_on}/{shots_total} al arco`` — if shots_total > 0
+    - ``{passes_total} pases ({pass_accuracy})`` — if passes_total > 0
+    - ``{key_passes} pases clave`` — if key_passes > 0
+    - ``{dribbles_success}/{dribbles_attempts} regates`` — ALWAYS
+    - ``{duels_won}/{duels_total} duelos`` — if duels_total > 0
+    - ``{n} faltas`` — if fouls_committed > 0
+    - ``{n} falta recibida/faltas recibidas`` — if fouls_drawn > 0
+    - ``{n} amarilla/amarillas`` — if yellow_cards > 0
+    - ``{n} roja/rojas`` — if red_cards > 0
     """
     parts: list[str] = []
 
+    # Minutes always first
+    parts.append(f"{p.minutes}'")
+
+    if p.goals:
+        parts.append(f"{p.goals} {_pluralize(p.goals, _GOL_SINGULAR, _GOL_PLURAL)}")
+    if p.assists:
+        parts.append(
+            f"{p.assists} {_pluralize(p.assists, _ASIST_SINGULAR, _ASIST_PLURAL)}"
+        )
+    if p.shots_total:
+        parts.append(f"{p.shots_on}/{p.shots_total} al arco")
+    if p.passes_total:
+        accuracy = f" ({p.pass_accuracy})" if p.pass_accuracy else ""
+        parts.append(f"{p.passes_total} pases{accuracy}")
+    if p.key_passes:
+        parts.append(
+            f"{p.key_passes} {_pluralize(p.key_passes, _PASE_SINGULAR, _PASE_PLURAL)} clave"
+        )
+    # Dribbles are ALWAYS shown, even if 0/0.
+    parts.append(f"{p.dribbles_success}/{p.dribbles_attempts} regates")
+    if p.duels_total:
+        parts.append(f"{p.duels_won}/{p.duels_total} duelos")
+    if p.fouls_committed:
+        parts.append(
+            f"{p.fouls_committed} {_pluralize(p.fouls_committed, _FALTA_SINGULAR, _FALTA_PLURAL)}"
+        )
+    if p.fouls_drawn:
+        parts.append(
+            f"{p.fouls_drawn} {_pluralize(p.fouls_drawn, _FALTA_RECIBIDA_SINGULAR, _FALTA_RECIBIDA_PLURAL)}"
+        )
+    if p.yellow_cards:
+        parts.append(
+            f"{p.yellow_cards} {_pluralize(p.yellow_cards, _AMARILLA_SINGULAR, _AMARILLA_PLURAL)}"
+        )
+    if p.red_cards:
+        parts.append(
+            f"{p.red_cards} {_pluralize(p.red_cards, _ROJA_SINGULAR, _ROJA_PLURAL)}"
+        )
+
+    return ", ".join(parts)
+
+
+def _compact_highlights(p: PlayerStats) -> str:
+    """Compact highlights for the all-players section.
+
+    Different zero-suppression from enriched highlights:
+    - ``{shots_total} tiros`` — ALWAYS
+    - ``{passes_total} pases`` — ALWAYS, ``({pass_accuracy})`` appended if non-empty
+    - ``{dribbles_success}/{dribbles_attempts} regates`` — if attempts > 0
+    - ``{duels_won}/{duels_total} duelos`` — ALWAYS
+    - goals/assists/key_passes/fouls/cards — only if > 0
+    """
+    parts: list[str] = []
+
+    # Shots always
+    parts.append(f"{p.shots_total} tiros")
+    # Passes always, accuracy appended if non-empty
+    accuracy = f" ({p.pass_accuracy})" if p.pass_accuracy else ""
+    parts.append(f"{p.passes_total} pases{accuracy}")
+    # Dribbles only if attempts > 0
+    if p.dribbles_attempts:
+        parts.append(f"{p.dribbles_success}/{p.dribbles_attempts} regates")
+    # Duels always
+    parts.append(f"{p.duels_won}/{p.duels_total} duelos")
+    # Conditional stats
     if p.goals:
         parts.append(f"{p.goals} {_pluralize(p.goals, _GOL_SINGULAR, _GOL_PLURAL)}")
     if p.assists:
@@ -418,10 +613,36 @@ def _player_highlights(p: PlayerStats) -> str:
         parts.append(
             f"{p.key_passes} {_pluralize(p.key_passes, _PASE_SINGULAR, _PASE_PLURAL)} clave"
         )
-    # Dribbles are ALWAYS shown, even if 0/0.
-    parts.append(f"{p.dribbles_success}/{p.dribbles_attempts} regates")
+    if p.fouls_committed:
+        parts.append(
+            f"{p.fouls_committed} {_pluralize(p.fouls_committed, _FALTA_SINGULAR, _FALTA_PLURAL)}"
+        )
+    if p.fouls_drawn:
+        parts.append(
+            f"{p.fouls_drawn} {_pluralize(p.fouls_drawn, _FALTA_RECIBIDA_SINGULAR, _FALTA_RECIBIDA_PLURAL)}"
+        )
+    if p.yellow_cards:
+        parts.append(
+            f"{p.yellow_cards} {_pluralize(p.yellow_cards, _AMARILLA_SINGULAR, _AMARILLA_PLURAL)}"
+        )
+    if p.red_cards:
+        parts.append(
+            f"{p.red_cards} {_pluralize(p.red_cards, _ROJA_SINGULAR, _ROJA_PLURAL)}"
+        )
 
     return ", ".join(parts)
+
+
+def _pos_abbr(pos: str) -> str:
+    """Map the first letter of a lineup ``pos`` code to a Spanish abbr.
+
+    API-Football lineup ``pos`` values are ``GK``, ``DF``, ``MF``,
+    ``FW``. The first letter maps: G→ARQ, D→DEF, M→MED, F→ATK.
+    Any unknown first letter falls back to the uppercased letter.
+    """
+    if not pos:
+        return ""
+    return _POS_ABBR.get(pos[0], pos[0])
 
 
 def _pluralize(count: int, singular: str, plural: str) -> str:

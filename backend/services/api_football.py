@@ -82,6 +82,13 @@ class APIFootballClient:
             )
         resp = await self._client.get(endpoint, params=params)
         resp.raise_for_status()
+        # 204 No Content — the /fixtures/lineups endpoint returns 204
+        # when lineups are not yet published (pre-kickoff). Return an
+        # empty list so the caller can treat it as (None, None) after
+        # parsing. This is harmless to other endpoints (they never
+        # return 204 with a successful body).
+        if resp.status_code == 204:
+            return []
         data = resp.json()
         return data.get("response", [])
 
@@ -106,6 +113,16 @@ class APIFootballClient:
     async def fetch_players(self, fixture_id: int) -> list[dict]:
         """Return the per-team players list for `fixture_id`."""
         return await self._get("/fixtures/players", {"fixture": fixture_id})
+
+    async def fetch_lineups(self, fixture_id: int) -> list[dict]:
+        """Return the per-team lineups list for `fixture_id`.
+
+        The /fixtures/lineups endpoint returns 204 (no content) when
+        lineups are not yet published. The shared ``_get`` handles this
+        by returning ``[]`` so the caller can pipe it through
+        ``parse_lineups`` → ``(None, None)``.
+        """
+        return await self._get("/fixtures/lineups", {"fixture": fixture_id})
 
     async def aclose(self) -> None:
         """Close the underlying `httpx.AsyncClient`. Idempotent."""

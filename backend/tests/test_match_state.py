@@ -21,6 +21,8 @@ from pydantic import ValidationError
 
 from backend.models import (
     FixtureStatus,
+    LineupPlayer,
+    LineupTeam,
     MatchEvent,
     MatchState,
     PlayerStats,
@@ -102,6 +104,39 @@ def make_player(
         fouls_drawn=2,
         yellow_cards=0,
         red_cards=0,
+    )
+
+
+def make_lineup_player(
+    name: str = "L. Messi",
+    pos: str = "FW",
+    number: int = 10,
+    grid: str | None = "4:3",
+) -> LineupPlayer:
+    return LineupPlayer(
+        player_id=1,
+        name=name,
+        number=number,
+        pos=pos,
+        grid=grid,
+    )
+
+
+def make_lineup_team(
+    team_name: str = "Argentina",
+    formation: str = "4-3-3",
+    starters: list[LineupPlayer] | None = None,
+    coach_name: str | None = "L. Scaloni",
+) -> LineupTeam:
+    if starters is None:
+        starters = [make_lineup_player() for _ in range(11)]
+    return LineupTeam(
+        team_id=26,
+        team_name=team_name,
+        formation=formation,
+        startXI=starters,
+        substitutes=[],
+        coach_name=coach_name,
     )
 
 
@@ -332,6 +367,179 @@ class TestUpdateDetails:
         # Netherlands (away) gets +1 because of the own goal
         assert ms.get_state().home.goals == 0
         assert ms.get_state().away.goals == 1
+
+
+# ---------------------------------------------------------------------------
+# Lineup update
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateLineups:
+    def test_update_lineups_stores_and_is_readable(self):
+        """Spec: 'Lineups stored and readable'."""
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state())
+        home = make_lineup_team("Argentina", "4-3-3")
+        away = make_lineup_team("Netherlands", "3-4-1-2")
+
+        ms.update_lineups(home, away)
+
+        assert ms.get_state().home_lineup is home
+        assert ms.get_state().away_lineup is away
+        assert ms.get_state().home_lineup.formation == "4-3-3"
+        assert ms.get_state().away_lineup.formation == "3-4-1-2"
+
+    def test_update_lineups_none_none_accepted_without_raising(self):
+        """Spec: 'None lineups accepted without raising'."""
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state())
+
+        ms.update_lineups(None, None)
+
+        assert ms.get_state().home_lineup is None
+        assert ms.get_state().away_lineup is None
+
+    def test_update_lineups_before_fixture_raises_runtime_error(self):
+        """Spec: 'Lineup update before fixture raises RuntimeError'."""
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+
+        with pytest.raises(RuntimeError):
+            ms.update_lineups(None, None)
+
+
+# ---------------------------------------------------------------------------
+# Context text — formaciones section (NEW)
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextFormaciones:
+    def test_both_lineups_loaded_renders_single_line(self):
+        """Spec: 'Both lineups loaded' — FORMACIONES: {home} {f1} - {away} {f2}."""
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(home_name="Argentina", away_name="Holanda"))
+        ms.update_lineups(
+            make_lineup_team("Argentina", "4-3-3"),
+            make_lineup_team("Holanda", "3-4-1-2"),
+        )
+
+        text = ms.get_context_text()
+
+        assert "FORMACIONES: Argentina 4-3-3 - Holanda 3-4-1-2" in text
+
+    def test_lineups_not_loaded_collapses_to_fallback(self):
+        """Spec: 'Lineups not loaded collapses to fallback'."""
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state())
+
+        text = ms.get_context_text()
+
+        assert "FORMACIONES: No disponibles aún" in text
+
+    def test_one_lineup_missing_collapses_to_fallback(self):
+        """Spec: 'One lineup missing collapses to fallback'."""
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state(home_name="Argentina", away_name="Holanda"))
+        ms.update_lineups(make_lineup_team("Argentina", "4-3-3"), None)
+
+        text = ms.get_context_text()
+
+        assert "FORMACIONES: No disponibles aún" in text
+
+
+# ---------------------------------------------------------------------------
+# Context text — all players section (NEW)
+# ---------------------------------------------------------------------------
+
+
+class TestContextTextAllPlayers:
+    def test_all_22_starters_listed_grouped_by_team(self):
+        """Spec: 'All 22 starters listed grouped by team'."""
+        from backend.services.match_state import MatchStateManager
+
+        home_starters = [
+            make_lineup_player(f"H{i}", pos="DF") for i in range(11)
+        ]
+        away_starters = [
+            make_lineup_player(f"A{i}", pos="MF") for i in range(11)
+        ]
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state())
+        ms.update_lineups(
+            make_lineup_team("Argentina", "4-3-3", starters=home_starters),
+            make_lineup_team("Netherlands", "3-4-1-2", starters=away_starters),
+        )
+
+        text = ms.get_context_text()
+
+        assert "TODOS LOS JUGADORES:" in text
+        assert "Argentina (4-3-3):" in text
+        assert "Netherlands (3-4-1-2):" in text
+        # Home starters appear before away starters
+        home_idx = text.find("Argentina (4-3-3):")
+        away_idx = text.find("Netherlands (3-4-1-2):")
+        assert 0 < home_idx < away_idx
+
+    def test_no_lineups_loaded_collapses_to_fallback(self):
+        """Spec: 'No lineups loaded collapses to fallback'."""
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state())
+
+        text = ms.get_context_text()
+
+        assert "TODOS LOS JUGADORES: Sin datos suficientes" in text
+
+    def test_one_team_only_shows_that_team(self):
+        """Spec: when only one lineup is present, show that team's players."""
+        from backend.services.match_state import MatchStateManager
+
+        home_starters = [make_lineup_player(f"H{i}", pos="DF") for i in range(11)]
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state())
+        ms.update_lineups(
+            make_lineup_team("Argentina", "4-3-3", starters=home_starters),
+            None,
+        )
+
+        text = ms.get_context_text()
+
+        assert "Argentina (4-3-3):" in text
+        assert "Netherlands" not in text.split("TODOS LOS JUGADORES:")[1].split("\n\n")[0]
+
+    def test_position_abbreviation_mapping(self):
+        """Spec: pos[0] → G=ARQ, D=DEF, M=MED, F=ATK."""
+        from backend.services.match_state import MatchStateManager
+
+        starters = [
+            make_lineup_player("GK1", pos="GK"),
+            make_lineup_player("DF1", pos="DF"),
+            make_lineup_player("MF1", pos="MF"),
+            make_lineup_player("FW1", pos="FW"),
+        ]
+        ms = MatchStateManager()
+        ms.update_fixture(make_match_state())
+        ms.update_lineups(make_lineup_team(starters=starters), None)
+
+        text = ms.get_context_text()
+
+        all_players_section = text.split("TODOS LOS JUGADORES:")[1].split("\n\n")[0]
+        assert "ARQ" in all_players_section
+        assert "DEF" in all_players_section
+        assert "MED" in all_players_section
+        assert "ATK" in all_players_section
 
 
 # ---------------------------------------------------------------------------
@@ -636,16 +844,17 @@ class TestContextTextStats:
         assert "TIROS AL ARCO" not in text
         assert "xG:" not in text
 
-    def test_stats_with_data_emits_three_lines_with_team_abbrs(self):
-        """Spec: POSESIÓN, TIROS AL ARCO, xG lines with first-3-chars
-        uppercased team abbrs. Argentina→ARG, Holanda→HOL.
+    def test_stats_with_data_emits_ten_lines_in_spec_order(self):
+        """Spec: all 10 stat lines in the documented order:
+        POSESIÓN, TIROS AL ARCO, xG, TIROS TOTALES, CÓRNERES, FOULTAS,
+        OFFSIDE, PASES ACERTADOS, TARJETAS AMARILLAS, TARJETAS ROJAS.
         """
         from backend.services.match_state import MatchStateManager
 
         ms = MatchStateManager()
         home_stats = TeamStats(
             name="Argentina",
-            possession="50%",
+            possession="55%",
             shots_on_goal=3,
             total_shots=7,
             corners=3,
@@ -658,7 +867,7 @@ class TestContextTextStats:
         )
         away_stats = TeamStats(
             name="Holanda",
-            possession="50%",
+            possession="45%",
             shots_on_goal=2,
             total_shots=5,
             corners=2,
@@ -682,9 +891,58 @@ class TestContextTextStats:
 
         text = ms.get_context_text()
 
-        assert "POSESIÓN: ARG 50% - HOL 50%" in text
+        # Extract the stats section (between FORMACIONES fallback and standout)
+        # All 10 lines must appear in order.
+        assert "POSESIÓN: ARG 55% - HOL 45%" in text
         assert "TIROS AL ARCO: ARG 3 - HOL 2" in text
         assert "xG: ARG 1.90 - HOL 1.20" in text
+        assert "TIROS TOTALES: ARG 7 - HOL 5" in text
+        assert "CÓRNERES: ARG 3 - HOL 2" in text
+        assert "FOULTAS: ARG 9 - HOL 10" in text
+        assert "OFFSIDE: ARG 1 - HOL 2" in text
+        assert "PASES ACERTADOS: ARG 87% - HOL 85%" in text
+        assert "TARJETAS AMARILLAS: ARG 1 - HOL 0" in text
+        assert "TARJETAS ROJAS: ARG 0 - HOL 0" in text
+
+    def test_stats_lines_appear_in_documented_order(self):
+        """Triangulation: verify the 10 stat lines appear in the correct
+        sequence within the stats section."""
+        from backend.services.match_state import MatchStateManager
+
+        ms = MatchStateManager()
+        home_stats = TeamStats(
+            name="Argentina", possession="55%", expected_goals="1.90",
+        )
+        away_stats = TeamStats(
+            name="Holanda", possession="45%", expected_goals="1.20",
+        )
+        ms.update_fixture(
+            make_match_state(
+                elapsed=67, short="2H",
+                home_stats=home_stats, away_stats=away_stats,
+            )
+        )
+
+        text = ms.get_context_text()
+
+        # Extract just the stats section
+        stats_section = text.split("\n\n")
+        # Find the section that starts with POSESIÓN
+        stats_lines = None
+        for section in stats_section:
+            if section.startswith("POSESIÓN"):
+                stats_lines = section.split("\n")
+                break
+
+        assert stats_lines is not None
+        assert len(stats_lines) == 10
+        # Verify order by checking the label of each line
+        labels = [line.split(":")[0] for line in stats_lines]
+        assert labels == [
+            "POSESIÓN", "TIROS AL ARCO", "xG", "TIROS TOTALES",
+            "CÓRNERES", "FOULTAS", "OFFSIDE", "PASES ACERTADOS",
+            "TARJETAS AMARILLAS", "TARJETAS ROJAS",
+        ]
 
     def test_team_abbr_for_short_name_uses_full_uppercased(self):
         """Spec edge case: team name < 3 chars uses the full name
@@ -1010,15 +1268,17 @@ class TestPreKickoffSnapshot:
 
         text = ms.get_context_text()
 
+        assert "FORMACIONES: No disponibles aún" in text
         assert "GOLES: Sin goles aún" in text
         assert "ESTADÍSTICAS: No disponibles aún" in text
         assert "JUGADORES DESTACADOS: Sin datos suficientes" in text
         assert "JUGADORES FLOJOS: Sin datos suficientes" in text
+        assert "TODOS LOS JUGADORES: Sin datos suficientes" in text
         assert "CAMBIOS REALIZADOS: Ninguno" in text
         assert "TARJETAS: Ninguna" in text
 
-    def test_pre_kickoff_output_has_seven_sections_separated_by_blank_lines(self):
-        """Spec: 7 sections in fixed order, `\\n\\n` separator, single trailing `\\n`.
+    def test_pre_kickoff_output_has_nine_sections_separated_by_blank_lines(self):
+        """Spec: 9 sections in fixed order, `\\n\\n` separator, single trailing `\\n`.
         """
         from backend.services.match_state import MatchStateManager
 
@@ -1029,8 +1289,8 @@ class TestPreKickoffSnapshot:
 
         # Split on `\n\n` to count sections.
         sections = text.split("\n\n")
-        # 7 sections + 1 (the trailing \n leaves a trailing empty after the last split).
-        assert len(sections) == 7
+        # 9 sections + 1 (the trailing \n leaves a trailing empty after the last split).
+        assert len(sections) == 9
         # Trailing newline: text MUST end with exactly one '\n'.
         assert text.endswith("\n")
         assert not text.endswith("\n\n")
@@ -1048,7 +1308,7 @@ class TestFullSnapshotMinute67:
         This is THE canonical snapshot. Build a hand-crafted state
         at minute 67 with Argentina 2-1 Holanda, the 5 events listed
         in the spec, populated stats, and standouts (no weak).
-        Assert the EXACT full output string with all 7 sections,
+        Assert the EXACT full output string with all 9 sections,
         `\\n\\n` separators, and trailing `\\n`.
         """
         from backend.services.match_state import MatchStateManager
@@ -1156,20 +1416,42 @@ class TestFullSnapshotMinute67:
 
         text = ms.get_context_text()
 
+        # make_player gives: minutes=67, shots_total=1, shots_on=1,
+        # passes_total=30, pass_accuracy="85%", duels_won=3, duels_total=5,
+        # fouls_committed=1, fouls_drawn=2, yellow_cards=0, red_cards=0
+        #
+        # Messi enriched: 67', 1 gol, 1 asistencia, 1/1 al arco,
+        #   30 pases (85%), 3 pases clave, 4/6 regates, 3/5 duelos,
+        #   1 falta, 2 faltas recibidas
+        #
+        # Molina enriched: 67', 1 gol, 1/1 al arco,
+        #   30 pases (85%), 2 pases clave, 1/3 regates, 3/5 duelos,
+        #   1 falta, 2 faltas recibidas
         expected = (
             "⚽ Argentina 2 - 1 Holanda | Minuto 67 | 2do Tiempo\n"
+            "\n"
+            "FORMACIONES: No disponibles aún\n"
             "\n"
             "GOLES: N. Molina (35'), L. Messi (pen 73') - W. Weghorst (83')\n"
             "\n"
             "POSESIÓN: ARG 50% - HOL 50%\n"
             "TIROS AL ARCO: ARG 3 - HOL 2\n"
             "xG: ARG 1.90 - HOL 1.20\n"
+            "TIROS TOTALES: ARG 7 - HOL 5\n"
+            "CÓRNERES: ARG 3 - HOL 2\n"
+            "FOULTAS: ARG 9 - HOL 10\n"
+            "OFFSIDE: ARG 1 - HOL 2\n"
+            "PASES ACERTADOS: ARG 87% - HOL 85%\n"
+            "TARJETAS AMARILLAS: ARG 1 - HOL 0\n"
+            "TARJETAS ROJAS: ARG 0 - HOL 0\n"
             "\n"
             "JUGADORES DESTACADOS (por rating):\n"
-            "- L. Messi (8.5) - 1 gol, 1 asistencia, 3 pases clave, 4/6 regates\n"
-            "- N. Molina (7.8) - 1 gol, 2 pases clave, 1/3 regates\n"
+            "- L. Messi (8.5) - 67', 1 gol, 1 asistencia, 1/1 al arco, 30 pases (85%), 3 pases clave, 4/6 regates, 3/5 duelos, 1 falta, 2 faltas recibidas\n"
+            "- N. Molina (7.8) - 67', 1 gol, 1/1 al arco, 30 pases (85%), 2 pases clave, 1/3 regates, 3/5 duelos, 1 falta, 2 faltas recibidas\n"
             "\n"
             "JUGADORES FLOJOS: Sin datos suficientes\n"
+            "\n"
+            "TODOS LOS JUGADORES: Sin datos suficientes\n"
             "\n"
             "CAMBIOS REALIZADOS: L. Martínez → L. Paredes (82')\n"
             "\n"
@@ -1184,42 +1466,125 @@ class TestFullSnapshotMinute67:
 
 
 class TestPlayerHighlights:
-    def test_highlights_with_only_dribbles(self):
-        """Triangulation: 0 goals, 0 assists, 0 key passes → only
-        dribbles appear.
-        """
+    def test_highlights_with_full_stats_includes_all_fields(self):
+        """Spec: enriched highlights include minutes, goals, assists,
+        shots, passes, key passes, dribbles, duels, fouls, cards."""
         from backend.services.match_state import _player_highlights
 
-        p = make_player("X", rating="6.5", dribbles_success=2, dribbles_attempts=5)
-        # 0 goals, 0 assists, 0 key_passes → only dribbles shown.
+        p = PlayerStats(
+            name="Messi",
+            position="FW",
+            rating="8.5",
+            minutes=67,
+            goals=1,
+            assists=1,
+            shots_total=5,
+            shots_on=3,
+            passes_total=60,
+            key_passes=4,
+            pass_accuracy="88%",
+            duels_won=10,
+            duels_total=15,
+            dribbles_success=4,
+            dribbles_attempts=6,
+            fouls_committed=1,
+            fouls_drawn=5,
+            yellow_cards=1,
+            red_cards=0,
+        )
         result = _player_highlights(p)
 
-        assert result == "2/5 regates"
+        # Minutes always shown
+        assert "67'" in result
+        # Goals
+        assert "1 gol" in result
+        # Assists
+        assert "1 asistencia" in result
+        # Shots (shots_on/shots_total al arco)
+        assert "3/5 al arco" in result
+        # Passes (total pases (accuracy))
+        assert "60 pases (88%)" in result
+        # Key passes
+        assert "4 pases clave" in result
+        # Dribbles always shown
+        assert "4/6 regates" in result
+        # Duels
+        assert "10/15 duelos" in result
+        # Fouls committed
+        assert "1 falta" in result
+        # Fouls drawn
+        assert "5 faltas recibidas" in result
+        # Yellow card
+        assert "1 amarilla" in result
 
-    def test_highlights_with_one_goal_singular(self):
-        """Triangulation: singular `gol` for 1, plural `goles` for 2.
-        """
+    def test_highlights_with_all_zeros_shows_only_minutes_and_dribbles(self):
+        """Spec: when all stats are zero, only minutes and dribbles appear."""
         from backend.services.match_state import _player_highlights
 
-        p_singular = make_player("X", rating="6.5", goals=1)
-        p_plural = make_player("Y", rating="6.5", goals=2)
+        p = PlayerStats(
+            name="Sub",
+            position="M",
+            rating="6.0",
+            minutes=15,
+            goals=0,
+            assists=0,
+            shots_total=0,
+            shots_on=0,
+            passes_total=0,
+            key_passes=0,
+            pass_accuracy="",
+            duels_won=0,
+            duels_total=0,
+            dribbles_success=0,
+            dribbles_attempts=0,
+            fouls_committed=0,
+            fouls_drawn=0,
+            yellow_cards=0,
+            red_cards=0,
+        )
+        result = _player_highlights(p)
 
-        assert "1 gol," in _player_highlights(p_singular)
-        assert "2 goles," in _player_highlights(p_plural)
+        # Minutes always, dribbles always
+        assert "15'" in result
+        assert "0/0 regates" in result
+        # Nothing else (no goals, assists, shots, passes, etc.)
+        assert "gol" not in result
+        assert "asistencia" not in result
+        assert "al arco" not in result
+        assert "pases" not in result
+        assert "duelos" not in result
+        assert "falta" not in result
 
-    def test_highlights_pluralization_for_assists_and_passes(self):
-        """Triangulation: `asistencia/asistencias`, `pase/pases`.
-        """
+    def test_highlights_pluralization_for_goals_and_assists(self):
+        """Triangulation: singular/plural for gol/goles, asistencia/asistencias,
+        falta/faltas, amarilla/amarillas."""
         from backend.services.match_state import _player_highlights
 
-        p_one = make_player("X", rating="6.5", goals=1, assists=1, key_passes=1, dribbles_success=1, dribbles_attempts=1)
-        p_multi = make_player("Y", rating="6.5", goals=2, assists=2, key_passes=2, dribbles_success=1, dribbles_attempts=1)
+        p_one = PlayerStats(
+            name="A", position="F", rating="7.0", minutes=90,
+            goals=1, assists=1, fouls_committed=1, fouls_drawn=1,
+            yellow_cards=1, dribbles_success=1, dribbles_attempts=1,
+        )
+        p_multi = PlayerStats(
+            name="B", position="F", rating="7.0", minutes=90,
+            goals=2, assists=2, fouls_committed=2, fouls_drawn=2,
+            yellow_cards=2, dribbles_success=1, dribbles_attempts=1,
+        )
 
         one = _player_highlights(p_one)
         multi = _player_highlights(p_multi)
 
-        assert "1 gol, 1 asistencia, 1 pase clave" in one
-        assert "2 goles, 2 asistencias, 2 pases clave" in multi
+        assert "1 gol" in one
+        assert "1 asistencia" in one
+        assert "1 falta" in one
+        assert "1 falta recibida" in one
+        assert "1 amarilla" in one
+
+        assert "2 goles" in multi
+        assert "2 asistencias" in multi
+        assert "2 faltas" in multi
+        assert "2 faltas recibidas" in multi
+        assert "2 amarillas" in multi
 
 
 class TestParseRating:

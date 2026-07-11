@@ -26,8 +26,8 @@ from backend.data_source import (
     MockDataSource,
     create_data_source,
 )
-from backend.models import MatchEvent, MatchState, PlayerStats, TeamStats
-from backend.parsers import parse_fixture, parse_players, parse_statistics
+from backend.models import MatchEvent, MatchState, PlayerStats, TeamStats, LineupTeam, LineupPlayer
+from backend.parsers import parse_fixture, parse_lineups, parse_players, parse_statistics
 
 
 # ---------------------------------------------------------------------------
@@ -46,15 +46,17 @@ class FakeAPIFootballClient:
     unchanged.
     """
 
-    def __init__(self, fixture: dict, events: list, statistics: list, players: list) -> None:
+    def __init__(self, fixture: dict, events: list, statistics: list, players: list, lineups: list | None = None) -> None:
         self._fixture = fixture
         self._events = events
         self._statistics = statistics
         self._players = players
+        self._lineups = lineups or []
         self.fixture_calls: list[int] = []
         self.events_calls: list[int] = []
         self.statistics_calls: list[int] = []
         self.players_calls: list[int] = []
+        self.lineups_calls: list[int] = []
 
     async def fetch_fixture(self, fixture_id: int) -> dict:
         self.fixture_calls.append(fixture_id)
@@ -71,6 +73,10 @@ class FakeAPIFootballClient:
     async def fetch_players(self, fixture_id: int) -> list:
         self.players_calls.append(fixture_id)
         return self._players
+
+    async def fetch_lineups(self, fixture_id: int) -> list:
+        self.lineups_calls.append(fixture_id)
+        return self._lineups
 
     async def aclose(self) -> None:
         pass
@@ -577,6 +583,107 @@ class TestMockAndLiveBehavior:
         assert state.away_stats == from_parse_fixture.away_stats is None
         assert state.home_players == from_parse_fixture.home_players == []
         assert state.away_players == from_parse_fixture.away_players == []
+
+
+def lineups_payload() -> list:
+    """Minimal v3 lineups envelope array (two teams with formations)."""
+    return [
+        {
+            "team": {"id": 26, "name": "Argentina", "logo": "url"},
+            "formation": "4-3-3",
+            "startXI": [
+                {"player": {"id": 1, "name": "D. Martínez"}, "number": 23, "pos": "GK", "grid": "1:1"},
+            ],
+            "substitutes": [],
+            "coach": {"id": 1, "name": "L. Scaloni"},
+        },
+        {
+            "team": {"id": 41, "name": "Netherlands", "logo": "url"},
+            "formation": "3-4-1-2",
+            "startXI": [
+                {"player": {"id": 2, "name": "A. Noppert"}, "number": 1, "pos": "GK", "grid": "1:1"},
+            ],
+            "substitutes": [],
+            "coach": {"id": 2, "name": "L. van Gaal"},
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Requirement: get_lineups on MockDataSource and LiveDataSource
+# ---------------------------------------------------------------------------
+
+
+class TestMockGetLineups:
+    async def test_mock_reads_lineups_json_and_parses(self, mock_datasource):
+        """Spec: 'MockDataSource returns parsed lineups'.
+
+        Reads mock_data/lineups.json and returns (LineupTeam, LineupTeam)
+        with correct formations.
+        """
+        home, away = await mock_datasource.get_lineups()
+
+        assert home is not None and away is not None
+        assert isinstance(home, LineupTeam) and isinstance(away, LineupTeam)
+        assert home.formation == "4-3-3"
+        assert away.formation == "3-4-1-2"
+        assert home.team_name == "Argentina"
+        assert away.team_name == "Netherlands"
+
+    async def test_missing_lineups_json_returns_none_none(self, tmp_path):
+        """Spec: 'Missing lineups.json returns (None, None)'.
+
+        A mock_dir without lineups.json must return (None, None)
+        gracefully — NOT raise FileNotFoundError.
+        """
+        source = MockDataSource(tmp_path)
+
+        result = await source.get_lineups()
+
+        assert result == (None, None)
+
+
+class TestLiveGetLineups:
+    async def test_live_delegates_to_client_and_parses(self):
+        """Spec: 'Live mode returns parsed lineups'.
+
+        LiveDataSource.get_lineups() calls client.fetch_lineups and
+        passes the result through parse_lineups (shared parser seam).
+        """
+        client = FakeAPIFootballClient(
+            fixture=fixture_payload(),
+            events=events_payload(),
+            statistics=statistics_payload(),
+            players=players_payload(),
+            lineups=lineups_payload(),
+        )
+        source = LiveDataSource(client=client, fixture_id=868019)
+
+        home, away = await source.get_lineups()
+
+        assert client.lineups_calls == [868019]
+        assert home is not None and away is not None
+        assert home.formation == "4-3-3"
+        assert away.formation == "3-4-1-2"
+
+    async def test_live_empty_fetch_returns_none_none(self):
+        """Spec: 'Empty fetch returns (None, None)'.
+
+        A 204 (no content) from the API produces [] which
+        parse_lineups([]) turns into (None, None).
+        """
+        client = FakeAPIFootballClient(
+            fixture=fixture_payload(),
+            events=events_payload(),
+            statistics=statistics_payload(),
+            players=players_payload(),
+            lineups=[],  # 204 case
+        )
+        source = LiveDataSource(client=client, fixture_id=868019)
+
+        result = await source.get_lineups()
+
+        assert result == (None, None)
 
 
 # ---------------------------------------------------------------------------

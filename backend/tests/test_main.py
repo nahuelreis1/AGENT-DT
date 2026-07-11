@@ -490,6 +490,60 @@ class TestLifespan:
 
 
 # ---------------------------------------------------------------------------
+# Lifespan — lineups fetch on startup (enrich-context)
+# ---------------------------------------------------------------------------
+
+
+class TestLifespanLineups:
+    async def test_lifespan_fetches_lineups_on_startup(self, monkeypatch, mock_datasource):
+        """Spec: lineups are fetched on startup and stored on the match state.
+
+        After lifespan startup, `app.state.match_state.get_state()`
+        must have `home_lineup` and `away_lineup` populated (not None)
+        when the data source provides lineups.
+        """
+        from backend.config import Settings
+        from backend.main import app, lifespan
+
+        mock_settings = Settings(MOCK_MODE=True)
+        monkeypatch.setattr("backend.main.Settings", lambda: mock_settings)
+        monkeypatch.setattr(
+            "backend.main.create_data_source", lambda s: mock_datasource
+        )
+
+        async with lifespan(app):
+            state = app.state.match_state.get_state()
+            assert state.home_lineup is not None
+            assert state.away_lineup is not None
+            assert state.home_lineup.formation == "4-3-3"
+            assert state.away_lineup.formation == "3-4-1-2"
+
+    async def test_lifespan_none_lineups_no_op(self, monkeypatch, tmp_path, mock_data_dir):
+        """Spec: when get_lineups returns (None, None), update_lineups
+        is still called (stores None/None, no error)."""
+        import shutil
+
+        from backend.config import Settings
+        from backend.data_source import MockDataSource
+        from backend.main import app, lifespan
+
+        # Copy fixture.json so get_fixture works, but DON'T copy
+        # lineups.json so get_lineups returns (None, None).
+        shutil.copy(mock_data_dir / "fixture.json", tmp_path / "fixture.json")
+        mock_settings = Settings(MOCK_MODE=True)
+        empty_ds = MockDataSource(tmp_path)
+        monkeypatch.setattr("backend.main.Settings", lambda: mock_settings)
+        monkeypatch.setattr(
+            "backend.main.create_data_source", lambda s: empty_ds
+        )
+
+        async with lifespan(app):
+            state = app.state.match_state.get_state()
+            assert state.home_lineup is None
+            assert state.away_lineup is None
+
+
+# ---------------------------------------------------------------------------
 # app — FastAPI instance with router wired
 # ---------------------------------------------------------------------------
 
