@@ -1,0 +1,36 @@
+schema: spec-driven
+
+context: |
+  Project: AI DT — Agente de Comentarios de Fútbol en Vivo
+  Stack: Python 3 + FastAPI (backend on VPS) + Flask (local audio player) + n8n (VPS orchestrator) + TypeScript/JavaScript (n8n workflow SDK)
+  Architecture: FastAPI polls API-Football v3 and exposes match state + natural-language context; n8n AI Agent nodes (DeepSeek via OpenAI-compatible) consume the context; ElevenLabs TTS pushes .mp3 to a local Flask player via ngrok
+  Testing: pytest + pytest-asyncio + httpx (TestClient) — strict_tdd enabled
+  Style: Pydantic models, async-first services, mock-mode fallback (Argentina vs Netherlands, Qatar 2022) so development does not consume live API quota
+
+rules:
+  proposal:
+    - Include rollback plan for any change touching the polling loop or milestone detector
+    - Flag any change that alters the 6 milestone triggers (1=15', 2=30', 3=HT, 4=60', 5=75', 6=FT)
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Every endpoint MUST document its mock-mode vs live-mode behavior
+  design:
+    - Document the exact webhook payload pushed to n8n for each milestone
+    - Include sequence diagrams for the 6-moment analysis flow (especially momento 3 → momento 6 prediction comparison)
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Follow the existing backend/services and backend/routers layout
+    - Never commit real API keys, Telegram tokens, or ElevenLabs keys; use .env.example placeholders
+    - When adding JSON fixtures under backend/mock_data/, preserve API-Football v3 envelope shape
+    tdd: true
+    test_command: "cd backend && pytest"
+  verify:
+    test_command: "cd backend && pytest"
+    build_command: ""
+    coverage_threshold: 70
+  archive:
+    - Warn before merging destructive deltas to main specs
+    - Preserve the predict-and-compare lineage between momento 3 and momento 6

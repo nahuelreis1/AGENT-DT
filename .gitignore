@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.env.*
+
+# Local tooling
+.agents/
+.atl/
+.engram/
+.opencode/
+opencode.json
+skills-lock.json
+
+# n8n local artifacts (SDK source is committed, not runtime)
+*.mp3
+
+# OS
+Thumbs.db
+.DS_Store
