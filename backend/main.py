@@ -126,6 +126,19 @@ async def lifespan(app: FastAPI):
             )
         )
     else:
+        # Mock mode: prime the state with momento 1 so endpoints
+        # return useful data immediately (no empty "Sin goles aún" on
+        # first load).  The user can still advance to later momentos
+        # via /mock/avanzar.
+        try:
+            events, home_stats, away_stats, home_players, away_players = (
+                await app.state.data_source.get_details(1)
+            )
+            app.state.match_state.update_details(
+                events, home_stats, away_stats, home_players, away_players
+            )
+        except Exception as exc:
+            log.warning("initial mock details fetch failed: %s", exc)
         app.state.polling_task = None
 
     yield
