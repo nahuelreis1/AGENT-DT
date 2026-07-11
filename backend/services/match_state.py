@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from backend.models import (
+    FixtureStatus,
     MatchEvent,
     MatchState,
     PlayerStats,
@@ -62,6 +63,22 @@ PERIOD_NAMES: dict[str, str] = {
     "AWD": "Perdida por regla",
     "WO": "Ganado por ausencia",
     "LIVE": "En curso",
+}
+
+
+# The 6 discrete match "momenti" the mock endpoints can advance to.
+# Each maps to the `FixtureStatus` the match SHOULD show at that
+# snapshot. Used by `POST /mock/avanzar` to set the state status
+# before fetching per-momento details.
+#
+# Spec: openspec/changes/backend-api/specs/match-state-manager/spec.md
+MOMENTO_STATUSES: dict[int, FixtureStatus] = {
+    1: FixtureStatus(elapsed=15, short="1H", long="First Half"),
+    2: FixtureStatus(elapsed=30, short="1H", long="First Half"),
+    3: FixtureStatus(elapsed=45, short="HT", long="Halftime"),
+    4: FixtureStatus(elapsed=60, short="2H", long="Second Half"),
+    5: FixtureStatus(elapsed=75, short="2H", long="Second Half"),
+    6: FixtureStatus(elapsed=120, short="PEN", long="Match Finished After Penalty"),
 }
 
 

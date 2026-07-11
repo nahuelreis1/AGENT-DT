@@ -1389,3 +1389,47 @@ class TestModuleSurface:
             "WO": "Ganado por ausencia",
             "LIVE": "En curso",
         }
+
+
+# ---------------------------------------------------------------------------
+# MOMENTO_STATUSES — the 6-key map from momento (1..6) to FixtureStatus.
+# Spec: openspec/changes/backend-api/specs/match-state-manager/spec.md
+# ---------------------------------------------------------------------------
+
+
+class TestMomentoStatuses:
+    def test_momento_statuses_all_six(self):
+        """Spec: `MOMENTO_STATUSES` MUST be a `dict[int, FixtureStatus]`
+        mapping momento keys 1..6 to the corresponding fixture statuses.
+
+        Pins every (elapsed, short, long) triple so a drift on any
+        single value is caught immediately.
+        """
+        from backend.services.match_state import MOMENTO_STATUSES
+
+        assert set(MOMENTO_STATUSES.keys()) == {1, 2, 3, 4, 5, 6}
+
+        expected: dict[int, tuple[int, str, str]] = {
+            1: (15, "1H", "First Half"),
+            2: (30, "1H", "First Half"),
+            3: (45, "HT", "Halftime"),
+            4: (60, "2H", "Second Half"),
+            5: (75, "2H", "Second Half"),
+            6: (120, "PEN", "Match Finished After Penalty"),
+        }
+
+        for momento, (elapsed, short, long_) in expected.items():
+            status = MOMENTO_STATUSES[momento]
+            assert status.elapsed == elapsed, f"momento {momento} elapsed"
+            assert status.short == short, f"momento {momento} short"
+            assert status.long == long_, f"momento {momento} long"
+
+    def test_momento_statuses_values_are_fixture_status_instances(self):
+        """Triangulation: every value is a real `FixtureStatus` instance,
+        not a plain dict — the endpoints rely on attribute access.
+        """
+        from backend.models import FixtureStatus
+        from backend.services.match_state import MOMENTO_STATUSES
+
+        for momento, status in MOMENTO_STATUSES.items():
+            assert isinstance(status, FixtureStatus), f"momento {momento}"
