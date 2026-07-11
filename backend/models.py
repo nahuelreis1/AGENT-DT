@@ -128,7 +128,8 @@ class LineupTeam(BaseModel):
 
     team_id: int = Field(gt=0)
     team_name: str = Field(min_length=1)
-    formation: str = Field(min_length=1, description="e.g. '4-3-3'")
+    formation: str | None = Field(default=None, min_length=1, description="e.g. '4-3-3'")
+    """Formation string, or None when the API does not provide it."""
     startXI: list[LineupPlayer] = []
     substitutes: list[LineupPlayer] = []
     coach_name: str | None = None

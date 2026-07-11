@@ -274,7 +274,7 @@ def parse_lineups(
             LineupTeam(
                 team_id=team["id"],
                 team_name=team["name"],
-                formation=team_block["formation"],
+                formation=team_block.get("formation"),
                 startXI=starters,
                 substitutes=subs,
                 coach_name=coach_name,
@@ -289,18 +289,23 @@ def parse_lineups(
 def _parse_lineup_player(raw: dict) -> LineupPlayer:
     """Parse a single player entry from a ``startXI``/``substitutes`` array.
 
-    The v3 envelope wraps the player identity in a nested ``player``
-    dict (``player.id``, ``player.name``). ``number``, ``pos``, and
-    ``grid`` are siblings of that dict. ``grid`` may be ``null`` →
-    ``None``.
+    The v3 spec says ``number``, ``pos``, and ``grid`` are siblings of
+    ``player``, but the actual API is inconsistent — substitutes
+    sometimes nest ``pos``/``number``/``grid`` INSIDE the ``player``
+    dict.  We look at both levels so we never crash on either shape.
+
+    ``grid`` may be ``null`` → ``None``.
     """
     player = raw["player"]
-    grid = raw.get("grid")
+    # Top-level first (spec), fall back to nested inside ``player`` (real API).
+    number = raw.get("number") or player.get("number")
+    pos = raw.get("pos") or player.get("pos", "?")
+    grid = raw.get("grid") or player.get("grid")
     # _safe_int returns 0 for None/non-int, matching the model's default.
     return LineupPlayer(
         player_id=_safe_int(player.get("id")),
         name=player["name"],
-        number=_safe_int(raw.get("number")),
-        pos=raw["pos"],
+        number=_safe_int(number),
+        pos=pos,
         grid=grid if isinstance(grid, str) else None,
     )

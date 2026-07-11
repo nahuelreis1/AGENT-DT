@@ -365,8 +365,8 @@ class MatchStateManager:
             return "FORMACIONES: No disponibles aún"
         return (
             f"FORMACIONES: {state.home_lineup.team_name} "
-            f"{state.home_lineup.formation} - "
-            f"{state.away_lineup.team_name} {state.away_lineup.formation}"
+            f"{state.home_lineup.formation or '?'} - "
+            f"{state.away_lineup.team_name} {state.away_lineup.formation or '?'}"
         )
 
     @staticmethod
@@ -400,7 +400,7 @@ class MatchStateManager:
         for lineup in (state.home_lineup, state.away_lineup):
             if lineup is None:
                 continue
-            lines.append(f"{lineup.team_name} ({lineup.formation}):")
+            lines.append(f"{lineup.team_name} ({lineup.formation or '?'}):")
             for player in lineup.startXI:
                 stats = stats_map.get(
                     player.name,

@@ -103,6 +103,20 @@ async def lifespan(app: FastAPI):
     )
 
     if not settings.MOCK_MODE:
+        # Prime the state with an initial details fetch so endpoints
+        # return full data from startup (not just the fixture skeleton).
+        # Use momento=6 (FT) for already-finished matches; the polling
+        # loop will handle live matches normally.  Errors are contained
+        # — a failed fetch is logged, not fatal.
+        try:
+            events, home_stats, away_stats, home_players, away_players = (
+                await app.state.data_source.get_details(6)
+            )
+            app.state.match_state.update_details(
+                events, home_stats, away_stats, home_players, away_players
+            )
+        except Exception as exc:
+            log.warning("initial details fetch failed: %s", exc)
         app.state.polling_task = asyncio.create_task(
             polling_loop(
                 app.state.data_source,
