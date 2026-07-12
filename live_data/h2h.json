@@ -1,0 +1,156 @@
+﻿{
+    "get":  "fixtures/headtohead",
+    "parameters":  {
+                       "h2h":  "26-15"
+                   },
+    "errors":  [
+
+               ],
+    "results":  2,
+    "paging":  {
+                   "current":  1,
+                   "total":  1
+               },
+    "response":  [
+                     {
+                         "fixture":  {
+                                         "id":  208327,
+                                         "referee":  null,
+                                         "timezone":  "UTC",
+                                         "date":  "2014-07-01T16:00:00+00:00",
+                                         "timestamp":  1404230400,
+                                         "periods":  {
+                                                         "first":  1404230400,
+                                                         "second":  1404234000
+                                                     },
+                                         "venue":  {
+                                                       "id":  null,
+                                                       "name":  "Arena Corinthians (São Paulo, São Paulo)",
+                                                       "city":  null
+                                                   },
+                                         "status":  {
+                                                        "long":  "Match Finished",
+                                                        "short":  "AET",
+                                                        "elapsed":  120,
+                                                        "extra":  null
+                                                    }
+                                     },
+                         "league":  {
+                                        "id":  1,
+                                        "name":  "World Cup",
+                                        "country":  "World",
+                                        "logo":  "https://media.api-sports.io/football/leagues/1.png",
+                                        "flag":  null,
+                                        "season":  2014,
+                                        "round":  "Round of 16",
+                                        "standings":  false
+                                    },
+                         "teams":  {
+                                       "home":  {
+                                                    "id":  26,
+                                                    "name":  "Argentina",
+                                                    "logo":  "https://media.api-sports.io/football/teams/26.png",
+                                                    "winner":  true
+                                                },
+                                       "away":  {
+                                                    "id":  15,
+                                                    "name":  "Switzerland",
+                                                    "logo":  "https://media.api-sports.io/football/teams/15.png",
+                                                    "winner":  false
+                                                }
+                                   },
+                         "goals":  {
+                                       "home":  1,
+                                       "away":  0
+                                   },
+                         "score":  {
+                                       "halftime":  {
+                                                        "home":  0,
+                                                        "away":  0
+                                                    },
+                                       "fulltime":  {
+                                                        "home":  0,
+                                                        "away":  0
+                                                    },
+                                       "extratime":  {
+                                                         "home":  1,
+                                                         "away":  0
+                                                     },
+                                       "penalty":  {
+                                                       "home":  null,
+                                                       "away":  null
+                                                   }
+                                   }
+                     },
+                     {
+                         "fixture":  {
+                                         "id":  1582681,
+                                         "referee":  "Joao Pedro Pinheiro, Portugal",
+                                         "timezone":  "UTC",
+                                         "date":  "2026-07-12T01:00:00+00:00",
+                                         "timestamp":  1783818000,
+                                         "periods":  {
+                                                         "first":  1783818000,
+                                                         "second":  1783821600
+                                                     },
+                                         "venue":  {
+                                                       "id":  0,
+                                                       "name":  "Arrowhead Stadium",
+                                                       "city":  "Kansas City"
+                                                   },
+                                         "status":  {
+                                                        "long":  "Match Finished",
+                                                        "short":  "AET",
+                                                        "elapsed":  120,
+                                                        "extra":  null
+                                                    }
+                                     },
+                         "league":  {
+                                        "id":  1,
+                                        "name":  "World Cup",
+                                        "country":  "World",
+                                        "logo":  "https://media.api-sports.io/football/leagues/1.png",
+                                        "flag":  null,
+                                        "season":  2026,
+                                        "round":  "Quarter-finals",
+                                        "standings":  true
+                                    },
+                         "teams":  {
+                                       "home":  {
+                                                    "id":  26,
+                                                    "name":  "Argentina",
+                                                    "logo":  "https://media.api-sports.io/football/teams/26.png",
+                                                    "winner":  true
+                                                },
+                                       "away":  {
+                                                    "id":  15,
+                                                    "name":  "Switzerland",
+                                                    "logo":  "https://media.api-sports.io/football/teams/15.png",
+                                                    "winner":  false
+                                                }
+                                   },
+                         "goals":  {
+                                       "home":  3,
+                                       "away":  1
+                                   },
+                         "score":  {
+                                       "halftime":  {
+                                                        "home":  1,
+                                                        "away":  0
+                                                    },
+                                       "fulltime":  {
+                                                        "home":  1,
+                                                        "away":  1
+                                                    },
+                                       "extratime":  {
+                                                         "home":  2,
+                                                         "away":  0
+                                                     },
+                                       "penalty":  {
+                                                       "home":  null,
+                                                       "away":  null
+                                                   }
+                                   }
+                     }
+                 ]
+}

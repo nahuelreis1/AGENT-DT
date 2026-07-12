@@ -1,0 +1,773 @@
+﻿{
+    "get":  "predictions",
+    "parameters":  {
+                       "fixture":  "1582681"
+                   },
+    "errors":  [
+
+               ],
+    "results":  1,
+    "paging":  {
+                   "current":  1,
+                   "total":  1
+               },
+    "response":  [
+                     {
+                         "predictions":  {
+                                             "winner":  {
+                                                            "id":  26,
+                                                            "name":  "Argentina",
+                                                            "comment":  "Win or draw"
+                                                        },
+                                             "win_or_draw":  true,
+                                             "under_over":  null,
+                                             "goals":  {
+                                                           "home":  "-3.5",
+                                                           "away":  "-2.5"
+                                                       },
+                                             "advice":  "Double chance : Argentina or draw",
+                                             "percent":  {
+                                                             "home":  "45%",
+                                                             "draw":  "45%",
+                                                             "away":  "10%"
+                                                         }
+                                         },
+                         "league":  {
+                                        "id":  1,
+                                        "name":  "World Cup",
+                                        "country":  "World",
+                                        "logo":  "https://media.api-sports.io/football/leagues/1.png",
+                                        "flag":  null,
+                                        "season":  2026
+                                    },
+                         "teams":  {
+                                       "home":  {
+                                                    "id":  26,
+                                                    "name":  "Argentina",
+                                                    "logo":  "https://media.api-sports.io/football/teams/26.png",
+                                                    "last_5":  {
+                                                                   "played":  5,
+                                                                   "form":  "100%",
+                                                                   "att":  "100%",
+                                                                   "def":  "62%",
+                                                                   "goals":  {
+                                                                                 "for":  {
+                                                                                             "total":  14,
+                                                                                             "average":  "2.8"
+                                                                                         },
+                                                                                 "against":  {
+                                                                                                 "total":  5,
+                                                                                                 "average":  "1.0"
+                                                                                             }
+                                                                             }
+                                                               },
+                                                    "league":  {
+                                                                   "form":  "WWWWW",
+                                                                   "fixtures":  {
+                                                                                    "played":  {
+                                                                                                   "home":  4,
+                                                                                                   "away":  1,
+                                                                                                   "total":  5
+                                                                                               },
+                                                                                    "wins":  {
+                                                                                                 "home":  4,
+                                                                                                 "away":  1,
+                                                                                                 "total":  5
+                                                                                             },
+                                                                                    "draws":  {
+                                                                                                  "home":  0,
+                                                                                                  "away":  0,
+                                                                                                  "total":  0
+                                                                                              },
+                                                                                    "loses":  {
+                                                                                                  "home":  0,
+                                                                                                  "away":  0,
+                                                                                                  "total":  0
+                                                                                              }
+                                                                                },
+                                                                   "goals":  {
+                                                                                 "for":  {
+                                                                                             "total":  {
+                                                                                                           "home":  11,
+                                                                                                           "away":  3,
+                                                                                                           "total":  14
+                                                                                                       },
+                                                                                             "average":  {
+                                                                                                             "home":  "2.8",
+                                                                                                             "away":  "3.0",
+                                                                                                             "total":  "2.8"
+                                                                                                         },
+                                                                                             "minute":  {
+                                                                                                            "0-15":  {
+                                                                                                                         "total":  null,
+                                                                                                                         "percentage":  null
+                                                                                                                     },
+                                                                                                            "16-30":  {
+                                                                                                                          "total":  3,
+                                                                                                                          "percentage":  "23.08%"
+                                                                                                                      },
+                                                                                                            "31-45":  {
+                                                                                                                          "total":  2,
+                                                                                                                          "percentage":  "15.38%"
+                                                                                                                      },
+                                                                                                            "46-60":  {
+                                                                                                                          "total":  1,
+                                                                                                                          "percentage":  "7.69%"
+                                                                                                                      },
+                                                                                                            "61-75":  {
+                                                                                                                          "total":  null,
+                                                                                                                          "percentage":  null
+                                                                                                                      },
+                                                                                                            "76-90":  {
+                                                                                                                          "total":  6,
+                                                                                                                          "percentage":  "46.15%"
+                                                                                                                      },
+                                                                                                            "91-105":  {
+                                                                                                                           "total":  1,
+                                                                                                                           "percentage":  "7.69%"
+                                                                                                                       },
+                                                                                                            "106-120":  {
+                                                                                                                            "total":  null,
+                                                                                                                            "percentage":  null
+                                                                                                                        }
+                                                                                                        },
+                                                                                             "under_over":  {
+                                                                                                                "0.5":  {
+                                                                                                                            "over":  5,
+                                                                                                                            "under":  0
+                                                                                                                        },
+                                                                                                                "1.5":  {
+                                                                                                                            "over":  5,
+                                                                                                                            "under":  0
+                                                                                                                        },
+                                                                                                                "2.5":  {
+                                                                                                                            "over":  4,
+                                                                                                                            "under":  1
+                                                                                                                        },
+                                                                                                                "3.5":  {
+                                                                                                                            "over":  0,
+                                                                                                                            "under":  5
+                                                                                                                        },
+                                                                                                                "4.5":  {
+                                                                                                                            "over":  0,
+                                                                                                                            "under":  5
+                                                                                                                        }
+                                                                                                            }
+                                                                                         },
+                                                                                 "against":  {
+                                                                                                 "total":  {
+                                                                                                               "home":  4,
+                                                                                                               "away":  1,
+                                                                                                               "total":  5
+                                                                                                           },
+                                                                                                 "average":  {
+                                                                                                                 "home":  "1.0",
+                                                                                                                 "away":  "1.0",
+                                                                                                                 "total":  "1.0"
+                                                                                                             },
+                                                                                                 "minute":  {
+                                                                                                                "0-15":  {
+                                                                                                                             "total":  1,
+                                                                                                                             "percentage":  "16.67%"
+                                                                                                                         },
+                                                                                                                "16-30":  {
+                                                                                                                              "total":  null,
+                                                                                                                              "percentage":  null
+                                                                                                                          },
+                                                                                                                "31-45":  {
+                                                                                                                              "total":  null,
+                                                                                                                              "percentage":  null
+                                                                                                                          },
+                                                                                                                "46-60":  {
+                                                                                                                              "total":  2,
+                                                                                                                              "percentage":  "33.33%"
+                                                                                                                          },
+                                                                                                                "61-75":  {
+                                                                                                                              "total":  1,
+                                                                                                                              "percentage":  "16.67%"
+                                                                                                                          },
+                                                                                                                "76-90":  {
+                                                                                                                              "total":  null,
+                                                                                                                              "percentage":  null
+                                                                                                                          },
+                                                                                                                "91-105":  {
+                                                                                                                               "total":  1,
+                                                                                                                               "percentage":  "16.67%"
+                                                                                                                           },
+                                                                                                                "106-120":  {
+                                                                                                                                "total":  1,
+                                                                                                                                "percentage":  "16.67%"
+                                                                                                                            }
+                                                                                                            },
+                                                                                                 "under_over":  {
+                                                                                                                    "0.5":  {
+                                                                                                                                "over":  3,
+                                                                                                                                "under":  2
+                                                                                                                            },
+                                                                                                                    "1.5":  {
+                                                                                                                                "over":  2,
+                                                                                                                                "under":  3
+                                                                                                                            },
+                                                                                                                    "2.5":  {
+                                                                                                                                "over":  0,
+                                                                                                                                "under":  5
+                                                                                                                            },
+                                                                                                                    "3.5":  {
+                                                                                                                                "over":  0,
+                                                                                                                                "under":  5
+                                                                                                                            },
+                                                                                                                    "4.5":  {
+                                                                                                                                "over":  0,
+                                                                                                                                "under":  5
+                                                                                                                            }
+                                                                                                                }
+                                                                                             }
+                                                                             },
+                                                                   "biggest":  {
+                                                                                   "streak":  {
+                                                                                                  "wins":  5,
+                                                                                                  "draws":  0,
+                                                                                                  "loses":  0
+                                                                                              },
+                                                                                   "wins":  {
+                                                                                                "home":  "3-0",
+                                                                                                "away":  "1-3"
+                                                                                            },
+                                                                                   "loses":  {
+                                                                                                 "home":  null,
+                                                                                                 "away":  null
+                                                                                             },
+                                                                                   "goals":  {
+                                                                                                 "for":  {
+                                                                                                             "home":  3,
+                                                                                                             "away":  3
+                                                                                                         },
+                                                                                                 "against":  {
+                                                                                                                 "home":  2,
+                                                                                                                 "away":  1
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                                   "clean_sheet":  {
+                                                                                       "home":  2,
+                                                                                       "away":  0,
+                                                                                       "total":  2
+                                                                                   },
+                                                                   "failed_to_score":  {
+                                                                                           "home":  0,
+                                                                                           "away":  0,
+                                                                                           "total":  0
+                                                                                       },
+                                                                   "penalty":  {
+                                                                                   "scored":  {
+                                                                                                  "total":  1,
+                                                                                                  "percentage":  "33.33%"
+                                                                                              },
+                                                                                   "missed":  {
+                                                                                                  "total":  2,
+                                                                                                  "percentage":  "66.67%"
+                                                                                              },
+                                                                                   "total":  3
+                                                                               },
+                                                                   "lineups":  [
+                                                                                   {
+                                                                                       "formation":  "4-4-2",
+                                                                                       "played":  4
+                                                                                   },
+                                                                                   {
+                                                                                       "formation":  "4-1-3-2",
+                                                                                       "played":  1
+                                                                                   }
+                                                                               ],
+                                                                   "cards":  {
+                                                                                 "yellow":  {
+                                                                                                "0-15":  {
+                                                                                                             "total":  null,
+                                                                                                             "percentage":  null
+                                                                                                         },
+                                                                                                "16-30":  {
+                                                                                                              "total":  null,
+                                                                                                              "percentage":  null
+                                                                                                          },
+                                                                                                "31-45":  {
+                                                                                                              "total":  null,
+                                                                                                              "percentage":  null
+                                                                                                          },
+                                                                                                "46-60":  {
+                                                                                                              "total":  null,
+                                                                                                              "percentage":  null
+                                                                                                          },
+                                                                                                "61-75":  {
+                                                                                                              "total":  null,
+                                                                                                              "percentage":  null
+                                                                                                          },
+                                                                                                "76-90":  {
+                                                                                                              "total":  1,
+                                                                                                              "percentage":  "33.33%"
+                                                                                                          },
+                                                                                                "91-105":  {
+                                                                                                               "total":  1,
+                                                                                                               "percentage":  "33.33%"
+                                                                                                           },
+                                                                                                "106-120":  {
+                                                                                                                "total":  1,
+                                                                                                                "percentage":  "33.33%"
+                                                                                                            }
+                                                                                            },
+                                                                                 "red":  {
+                                                                                             "0-15":  {
+                                                                                                          "total":  null,
+                                                                                                          "percentage":  null
+                                                                                                      },
+                                                                                             "16-30":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "31-45":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "46-60":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "61-75":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "76-90":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "91-105":  {
+                                                                                                            "total":  null,
+                                                                                                            "percentage":  null
+                                                                                                        },
+                                                                                             "106-120":  {
+                                                                                                             "total":  null,
+                                                                                                             "percentage":  null
+                                                                                                         }
+                                                                                         }
+                                                                             }
+                                                               }
+                                                },
+                                       "away":  {
+                                                    "id":  15,
+                                                    "name":  "Switzerland",
+                                                    "logo":  "https://media.api-sports.io/football/teams/15.png",
+                                                    "last_5":  {
+                                                                   "played":  5,
+                                                                   "form":  "73%",
+                                                                   "att":  "69%",
+                                                                   "def":  "77%",
+                                                                   "goals":  {
+                                                                                 "for":  {
+                                                                                             "total":  9,
+                                                                                             "average":  "1.8"
+                                                                                         },
+                                                                                 "against":  {
+                                                                                                 "total":  3,
+                                                                                                 "average":  "0.6"
+                                                                                             }
+                                                                             }
+                                                               },
+                                                    "league":  {
+                                                                   "form":  "DWWWD",
+                                                                   "fixtures":  {
+                                                                                    "played":  {
+                                                                                                   "home":  4,
+                                                                                                   "away":  1,
+                                                                                                   "total":  5
+                                                                                               },
+                                                                                    "wins":  {
+                                                                                                 "home":  3,
+                                                                                                 "away":  0,
+                                                                                                 "total":  3
+                                                                                             },
+                                                                                    "draws":  {
+                                                                                                  "home":  1,
+                                                                                                  "away":  1,
+                                                                                                  "total":  2
+                                                                                              },
+                                                                                    "loses":  {
+                                                                                                  "home":  0,
+                                                                                                  "away":  0,
+                                                                                                  "total":  0
+                                                                                              }
+                                                                                },
+                                                                   "goals":  {
+                                                                                 "for":  {
+                                                                                             "total":  {
+                                                                                                           "home":  8,
+                                                                                                           "away":  1,
+                                                                                                           "total":  9
+                                                                                                       },
+                                                                                             "average":  {
+                                                                                                             "home":  "2.0",
+                                                                                                             "away":  "1.0",
+                                                                                                             "total":  "1.8"
+                                                                                                         },
+                                                                                             "minute":  {
+                                                                                                            "0-15":  {
+                                                                                                                         "total":  1,
+                                                                                                                         "percentage":  "10.00%"
+                                                                                                                     },
+                                                                                                            "16-30":  {
+                                                                                                                          "total":  1,
+                                                                                                                          "percentage":  "10.00%"
+                                                                                                                      },
+                                                                                                            "31-45":  {
+                                                                                                                          "total":  null,
+                                                                                                                          "percentage":  null
+                                                                                                                      },
+                                                                                                            "46-60":  {
+                                                                                                                          "total":  3,
+                                                                                                                          "percentage":  "30.00%"
+                                                                                                                      },
+                                                                                                            "61-75":  {
+                                                                                                                          "total":  1,
+                                                                                                                          "percentage":  "10.00%"
+                                                                                                                      },
+                                                                                                            "76-90":  {
+                                                                                                                          "total":  4,
+                                                                                                                          "percentage":  "40.00%"
+                                                                                                                      },
+                                                                                                            "91-105":  {
+                                                                                                                           "total":  null,
+                                                                                                                           "percentage":  null
+                                                                                                                       },
+                                                                                                            "106-120":  {
+                                                                                                                            "total":  null,
+                                                                                                                            "percentage":  null
+                                                                                                                        }
+                                                                                                        },
+                                                                                             "under_over":  {
+                                                                                                                "0.5":  {
+                                                                                                                            "over":  4,
+                                                                                                                            "under":  1
+                                                                                                                        },
+                                                                                                                "1.5":  {
+                                                                                                                            "over":  3,
+                                                                                                                            "under":  2
+                                                                                                                        },
+                                                                                                                "2.5":  {
+                                                                                                                            "over":  1,
+                                                                                                                            "under":  4
+                                                                                                                        },
+                                                                                                                "3.5":  {
+                                                                                                                            "over":  1,
+                                                                                                                            "under":  4
+                                                                                                                        },
+                                                                                                                "4.5":  {
+                                                                                                                            "over":  0,
+                                                                                                                            "under":  5
+                                                                                                                        }
+                                                                                                            }
+                                                                                         },
+                                                                                 "against":  {
+                                                                                                 "total":  {
+                                                                                                               "home":  2,
+                                                                                                               "away":  1,
+                                                                                                               "total":  3
+                                                                                                           },
+                                                                                                 "average":  {
+                                                                                                                 "home":  "0.5",
+                                                                                                                 "away":  "1.0",
+                                                                                                                 "total":  "0.6"
+                                                                                                             },
+                                                                                                 "minute":  {
+                                                                                                                "0-15":  {
+                                                                                                                             "total":  null,
+                                                                                                                             "percentage":  null
+                                                                                                                         },
+                                                                                                                "16-30":  {
+                                                                                                                              "total":  null,
+                                                                                                                              "percentage":  null
+                                                                                                                          },
+                                                                                                                "31-45":  {
+                                                                                                                              "total":  null,
+                                                                                                                              "percentage":  null
+                                                                                                                          },
+                                                                                                                "46-60":  {
+                                                                                                                              "total":  null,
+                                                                                                                              "percentage":  null
+                                                                                                                          },
+                                                                                                                "61-75":  {
+                                                                                                                              "total":  null,
+                                                                                                                              "percentage":  null
+                                                                                                                          },
+                                                                                                                "76-90":  {
+                                                                                                                              "total":  2,
+                                                                                                                              "percentage":  "100.00%"
+                                                                                                                          },
+                                                                                                                "91-105":  {
+                                                                                                                               "total":  null,
+                                                                                                                               "percentage":  null
+                                                                                                                           },
+                                                                                                                "106-120":  {
+                                                                                                                                "total":  null,
+                                                                                                                                "percentage":  null
+                                                                                                                            }
+                                                                                                            },
+                                                                                                 "under_over":  {
+                                                                                                                    "0.5":  {
+                                                                                                                                "over":  3,
+                                                                                                                                "under":  2
+                                                                                                                            },
+                                                                                                                    "1.5":  {
+                                                                                                                                "over":  0,
+                                                                                                                                "under":  5
+                                                                                                                            },
+                                                                                                                    "2.5":  {
+                                                                                                                                "over":  0,
+                                                                                                                                "under":  5
+                                                                                                                            },
+                                                                                                                    "3.5":  {
+                                                                                                                                "over":  0,
+                                                                                                                                "under":  5
+                                                                                                                            },
+                                                                                                                    "4.5":  {
+                                                                                                                                "over":  0,
+                                                                                                                                "under":  5
+                                                                                                                            }
+                                                                                                                }
+                                                                                             }
+                                                                             },
+                                                                   "biggest":  {
+                                                                                   "streak":  {
+                                                                                                  "wins":  3,
+                                                                                                  "draws":  1,
+                                                                                                  "loses":  0
+                                                                                              },
+                                                                                   "wins":  {
+                                                                                                "home":  "4-1",
+                                                                                                "away":  null
+                                                                                            },
+                                                                                   "loses":  {
+                                                                                                 "home":  null,
+                                                                                                 "away":  null
+                                                                                             },
+                                                                                   "goals":  {
+                                                                                                 "for":  {
+                                                                                                             "home":  4,
+                                                                                                             "away":  1
+                                                                                                         },
+                                                                                                 "against":  {
+                                                                                                                 "home":  1,
+                                                                                                                 "away":  1
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                                   "clean_sheet":  {
+                                                                                       "home":  2,
+                                                                                       "away":  0,
+                                                                                       "total":  2
+                                                                                   },
+                                                                   "failed_to_score":  {
+                                                                                           "home":  1,
+                                                                                           "away":  0,
+                                                                                           "total":  1
+                                                                                       },
+                                                                   "penalty":  {
+                                                                                   "scored":  {
+                                                                                                  "total":  2,
+                                                                                                  "percentage":  "100.00%"
+                                                                                              },
+                                                                                   "missed":  {
+                                                                                                  "total":  0,
+                                                                                                  "percentage":  "0%"
+                                                                                              },
+                                                                                   "total":  2
+                                                                               },
+                                                                   "lineups":  [
+                                                                                   {
+                                                                                       "formation":  "4-2-3-1",
+                                                                                       "played":  3
+                                                                                   },
+                                                                                   {
+                                                                                       "formation":  "4-3-3",
+                                                                                       "played":  1
+                                                                                   },
+                                                                                   {
+                                                                                       "formation":  "4-3-1-2",
+                                                                                       "played":  1
+                                                                                   }
+                                                                               ],
+                                                                   "cards":  {
+                                                                                 "yellow":  {
+                                                                                                "0-15":  {
+                                                                                                             "total":  null,
+                                                                                                             "percentage":  null
+                                                                                                         },
+                                                                                                "16-30":  {
+                                                                                                              "total":  null,
+                                                                                                              "percentage":  null
+                                                                                                          },
+                                                                                                "31-45":  {
+                                                                                                              "total":  2,
+                                                                                                              "percentage":  "33.33%"
+                                                                                                          },
+                                                                                                "46-60":  {
+                                                                                                              "total":  2,
+                                                                                                              "percentage":  "33.33%"
+                                                                                                          },
+                                                                                                "61-75":  {
+                                                                                                              "total":  1,
+                                                                                                              "percentage":  "16.67%"
+                                                                                                          },
+                                                                                                "76-90":  {
+                                                                                                              "total":  null,
+                                                                                                              "percentage":  null
+                                                                                                          },
+                                                                                                "91-105":  {
+                                                                                                               "total":  1,
+                                                                                                               "percentage":  "16.67%"
+                                                                                                           },
+                                                                                                "106-120":  {
+                                                                                                                "total":  null,
+                                                                                                                "percentage":  null
+                                                                                                            }
+                                                                                            },
+                                                                                 "red":  {
+                                                                                             "0-15":  {
+                                                                                                          "total":  null,
+                                                                                                          "percentage":  null
+                                                                                                      },
+                                                                                             "16-30":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "31-45":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "46-60":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "61-75":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "76-90":  {
+                                                                                                           "total":  null,
+                                                                                                           "percentage":  null
+                                                                                                       },
+                                                                                             "91-105":  {
+                                                                                                            "total":  null,
+                                                                                                            "percentage":  null
+                                                                                                        },
+                                                                                             "106-120":  {
+                                                                                                             "total":  null,
+                                                                                                             "percentage":  null
+                                                                                                         }
+                                                                                         }
+                                                                             }
+                                                               }
+                                                }
+                                   },
+                         "comparison":  {
+                                            "form":  {
+                                                         "home":  "58%",
+                                                         "away":  "42%"
+                                                     },
+                                            "att":  {
+                                                        "home":  "61%",
+                                                        "away":  "39%"
+                                                    },
+                                            "def":  {
+                                                        "home":  "38%",
+                                                        "away":  "63%"
+                                                    },
+                                            "poisson_distribution":  {
+                                                                         "home":  "66%",
+                                                                         "away":  "34%"
+                                                                     },
+                                            "h2h":  {
+                                                        "home":  "100%",
+                                                        "away":  "0%"
+                                                    },
+                                            "goals":  {
+                                                          "home":  "100%",
+                                                          "away":  "0%"
+                                                      },
+                                            "total":  {
+                                                          "home":  "55.8%",
+                                                          "away":  "44.5%"
+                                                      }
+                                        },
+                         "h2h":  [
+                                     {
+                                         "fixture":  {
+                                                         "id":  208327,
+                                                         "referee":  null,
+                                                         "timezone":  "UTC",
+                                                         "date":  "2014-07-01T16:00:00+00:00",
+                                                         "timestamp":  1404230400,
+                                                         "periods":  {
+                                                                         "first":  1404230400,
+                                                                         "second":  1404234000
+                                                                     },
+                                                         "venue":  {
+                                                                       "id":  null,
+                                                                       "name":  "Arena Corinthians (São Paulo, São Paulo)",
+                                                                       "city":  null
+                                                                   },
+                                                         "status":  {
+                                                                        "long":  "Match Finished",
+                                                                        "short":  "AET",
+                                                                        "elapsed":  120,
+                                                                        "extra":  null
+                                                                    }
+                                                     },
+                                         "league":  {
+                                                        "id":  1,
+                                                        "name":  "World Cup",
+                                                        "country":  "World",
+                                                        "logo":  "https://media.api-sports.io/football/leagues/1.png",
+                                                        "flag":  null,
+                                                        "season":  2014,
+                                                        "round":  "Round of 16",
+                                                        "standings":  false
+                                                    },
+                                         "teams":  {
+                                                       "home":  {
+                                                                    "id":  26,
+                                                                    "name":  "Argentina",
+                                                                    "logo":  "https://media.api-sports.io/football/teams/26.png",
+                                                                    "winner":  true
+                                                                },
+                                                       "away":  {
+                                                                    "id":  15,
+                                                                    "name":  "Switzerland",
+                                                                    "logo":  "https://media.api-sports.io/football/teams/15.png",
+                                                                    "winner":  false
+                                                                }
+                                                   },
+                                         "goals":  {
+                                                       "home":  1,
+                                                       "away":  0
+                                                   },
+                                         "score":  {
+                                                       "halftime":  {
+                                                                        "home":  0,
+                                                                        "away":  0
+                                                                    },
+                                                       "fulltime":  {
+                                                                        "home":  0,
+                                                                        "away":  0
+                                                                    },
+                                                       "extratime":  {
+                                                                         "home":  1,
+                                                                         "away":  0
+                                                                     },
+                                                       "penalty":  {
+                                                                       "home":  null,
+                                                                       "away":  null
+                                                                   }
+                                                   }
+                                     }
+                                 ]
+                     }
+                 ]
+}
