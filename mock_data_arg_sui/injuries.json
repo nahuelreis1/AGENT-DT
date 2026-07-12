@@ -1,0 +1,68 @@
+{
+  "get": "",
+  "parameters": {},
+  "errors": [],
+  "results": 2,
+  "paging": {
+    "current": 1,
+    "total": 1
+  },
+  "response": [
+    {
+      "player": {
+        "id": 349344,
+        "name": "L. Jaquez",
+        "photo": "https://media.api-sports.io/football/players/349344.png",
+        "type": "Missing Fixture",
+        "reason": "Muscle Bruise"
+      },
+      "team": {
+        "id": 15,
+        "name": "Switzerland",
+        "logo": "https://media.api-sports.io/football/teams/15.png"
+      },
+      "fixture": {
+        "id": 1582681,
+        "timezone": "UTC",
+        "date": "2026-07-12T01:00:00+00:00",
+        "timestamp": 1783818000
+      },
+      "league": {
+        "id": 1,
+        "season": 2026,
+        "name": "World Cup",
+        "country": "World",
+        "logo": "https://media.api-sports.io/football/leagues/1.png",
+        "flag": null
+      }
+    },
+    {
+      "player": {
+        "id": 951,
+        "name": "M. Aebischer",
+        "photo": "https://media.api-sports.io/football/players/951.png",
+        "type": "Missing Fixture",
+        "reason": "Muscle Bruise"
+      },
+      "team": {
+        "id": 15,
+        "name": "Switzerland",
+        "logo": "https://media.api-sports.io/football/teams/15.png"
+      },
+      "fixture": {
+        "id": 1582681,
+        "timezone": "UTC",
+        "date": "2026-07-12T01:00:00+00:00",
+        "timestamp": 1783818000
+      },
+      "league": {
+        "id": 1,
+        "season": 2026,
+        "name": "World Cup",
+        "country": "World",
+        "logo": "https://media.api-sports.io/football/leagues/1.png",
+        "flag": null
+      }
+    }
+  ]
+}

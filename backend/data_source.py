@@ -38,6 +38,7 @@ log = logging.getLogger(__name__)
 # up to 101 in this fixture). Changing this map is the only way to
 # add a new snapshot.
 MOMENTO_FILE_KEYS: dict[int, str] = {
+    0: "pre",
     1: "15",
     2: "30",
     3: "ht",
@@ -69,6 +70,8 @@ class DataSource(Protocol):
     ) -> tuple[list[MatchEvent], TeamStats | None, TeamStats | None, list[PlayerStats], list[PlayerStats]]: ...
 
     async def get_lineups(self) -> tuple[LineupTeam | None, LineupTeam | None]: ...
+
+    async def get_predictions(self) -> dict: ...
 
 
 class MockDataSource:
@@ -124,6 +127,10 @@ class MockDataSource:
                 f"no mock data for momento={momento}; valid momenti are {sorted(MOMENTO_FILE_KEYS)}"
             ) from exc
 
+        # Pre-partido (momento 0): no events, stats, or players yet.
+        if momento == 0:
+            return [], None, None, [], []
+
         events = parse_events(self._load_json(f"events_{key}.json"))
         home_stats, away_stats = parse_statistics(self._load_json(f"statistics_{key}.json"))
         home_players, away_players = parse_players(self._load_json(f"players_{key}.json"))
@@ -146,6 +153,20 @@ class MockDataSource:
             return (None, None)
         raw = self._load_json("lineups.json")
         return parse_lineups(raw)
+
+    async def get_predictions(self) -> dict:
+        """Read ``predictions.json`` and return the first response element.
+
+        If the file does not exist (e.g. the default ``mock_data/``
+        directory has no predictions), return an empty dict so the
+        pre-partido context degrades gracefully to ``PREDICCIONES: No
+        disponibles`` rather than raising.
+        """
+        path = self.mock_dir / "predictions.json"
+        if not path.exists():
+            return {}
+        response = self._load_json("predictions.json")
+        return response[0] if response else {}
 
 
 class LiveDataSource:
@@ -204,6 +225,18 @@ class LiveDataSource:
         raw = await self._client.fetch_lineups(self._fixture_id)
         return parse_lineups(raw)
 
+    async def get_predictions(self) -> dict:
+        """Fetch predictions from the API and return the first element.
+
+        Calls ``/predictions`` with the fixture id and returns the
+        first element of the response array, or an empty dict when
+        the API returns no predictions (pre-kickoff 204 / empty).
+        """
+        response = await self._client._get(
+            "/predictions", {"fixture": self._fixture_id}
+        )
+        return response[0] if response else {}
+
 
 def create_data_source(config: Settings) -> DataSource:
     """Factory: return a `MockDataSource` or `LiveDataSource` per `config.MOCK_MODE`.
@@ -220,7 +253,8 @@ def create_data_source(config: Settings) -> DataSource:
     tooling) — the live code path is never hit in mock mode.
     """
     if config.MOCK_MODE:
-        return MockDataSource(_MOCK_DATA_DIR)
+        mock_dir = Path(config.MOCK_DATA_DIR) if config.MOCK_DATA_DIR else _MOCK_DATA_DIR
+        return MockDataSource(mock_dir)
     from backend.services.api_football import APIFootballClient
 
     client = APIFootballClient(api_key=config.API_FOOTBALL_KEY)

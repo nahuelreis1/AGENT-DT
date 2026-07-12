@@ -1765,16 +1765,17 @@ class TestModuleSurface:
 class TestMomentoStatuses:
     def test_momento_statuses_all_six(self):
         """Spec: `MOMENTO_STATUSES` MUST be a `dict[int, FixtureStatus]`
-        mapping momento keys 1..6 to the corresponding fixture statuses.
+        mapping momento keys 0..6 to the corresponding fixture statuses.
 
         Pins every (elapsed, short, long) triple so a drift on any
         single value is caught immediately.
         """
         from backend.services.match_state import MOMENTO_STATUSES
 
-        assert set(MOMENTO_STATUSES.keys()) == {1, 2, 3, 4, 5, 6}
+        assert set(MOMENTO_STATUSES.keys()) == {0, 1, 2, 3, 4, 5, 6}
 
         expected: dict[int, tuple[int, str, str]] = {
+            0: (0, "NS", "Not Started"),
             1: (15, "1H", "First Half"),
             2: (30, "1H", "First Half"),
             3: (45, "HT", "Halftime"),

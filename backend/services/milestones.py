@@ -50,6 +50,11 @@ log = logging.getLogger(__name__)
 
 
 TRIGGER_MATRIX: list[tuple[int, Callable, Callable]] = [
+    # Momento 0 (pre-partido): fires once when the match has not
+    # started (status "NS"). The guard is always True — the
+    # at-most-once guarantee is enforced by ``_fired``. This is the
+    # pre-match prediction snapshot.
+    (0, lambda s: s.status.short == "NS", lambda s: True),
     (1, lambda s: s.status.elapsed >= 15, lambda s: s.status.short == "1H"),
     (
         2,
@@ -102,7 +107,7 @@ class MilestoneDetector:
         self._owns_http = http_client is None
         # 1..=6 → fired/pending. We never mutate the dict after init
         # except to flip values to True, so a plain dict is enough.
-        self._fired: dict[int, bool] = {i: False for i in range(1, 7)}
+        self._fired: dict[int, bool] = {i: False for i in range(0, 7)}
 
     async def check_and_push(self) -> None:
         """Walk the trigger matrix once. Fire each un-fired momento
@@ -120,7 +125,7 @@ class MilestoneDetector:
             return
         state = self._match_state.get_state()
         for momento, condition, guard in TRIGGER_MATRIX:
-            if self._fired[momento]:
+            if self._fired.get(momento, False):
                 continue
             if not condition(state) or not guard(state):
                 continue

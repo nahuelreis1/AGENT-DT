@@ -480,7 +480,7 @@ class TestEmptyN8nUrl:
 
         # Detector stays un-fired so a later config change can
         # re-enable the webhook and have the trigger still available.
-        assert detector._fired == {i: False for i in range(1, 7)}
+        assert detector._fired == {i: False for i in range(0, 7)}
 
         await detector.aclose()
 

@@ -152,6 +152,7 @@ class MatchState(BaseModel):
     away_players: list[PlayerStats] = []
     home_lineup: LineupTeam | None = None
     away_lineup: LineupTeam | None = None
+    predictions: dict | None = None
     last_updated: datetime
 
 

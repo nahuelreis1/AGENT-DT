@@ -45,9 +45,9 @@ class PredictionCreate(BaseModel):
 
 
 class MockAvanzarRequest(BaseModel):
-    """POST /mock/avanzar body — the momento to advance to (1..6)."""
+    """POST /mock/avanzar body — the momento to advance to (0..6)."""
 
-    momento: int = Field(ge=1, le=6)
+    momento: int = Field(ge=0, le=6)
 
 
 class MockSetMinuteRequest(BaseModel):

@@ -74,6 +74,7 @@ PERIOD_NAMES: dict[str, str] = {
 #
 # Spec: openspec/changes/backend-api/specs/match-state-manager/spec.md
 MOMENTO_STATUSES: dict[int, FixtureStatus] = {
+    0: FixtureStatus(elapsed=0, short="NS", long="Not Started"),
     1: FixtureStatus(elapsed=15, short="1H", long="First Half"),
     2: FixtureStatus(elapsed=30, short="1H", long="First Half"),
     3: FixtureStatus(elapsed=45, short="HT", long="Halftime"),
@@ -199,6 +200,24 @@ class MatchStateManager:
         self._state.home_lineup = home_lineup
         self._state.away_lineup = away_lineup
 
+    def update_predictions(self, predictions: dict | None) -> None:
+        """Store API predictions data on the current ``MatchState``.
+
+        Accepts ``None`` (predictions not available) or a dict
+        carrying the API-Football v3 prediction fields (winner,
+        advice, percent, comparison, h2h). When called before
+        ``update_fixture()``, raises ``RuntimeError`` (same contract
+        as ``update_details`` / ``update_lineups``).
+
+        Predictions are shown in the context text ONLY while the match
+        has not started (``events`` empty); once events exist the
+        section is suppressed.
+        """
+        if self._state is None:
+            raise RuntimeError("MatchState not initialized — call update_fixture first")
+
+        self._state.predictions = predictions
+
     # ------------------------------------------------------------------ #
     # State accessors
     # ------------------------------------------------------------------ #
@@ -217,19 +236,31 @@ class MatchStateManager:
         Cards. Separated by ``\\n\\n``; one trailing ``\\n``. Empty
         sections use their documented fallback (e.g.
         ``GOLES: Sin goles aún``).
+
+        A ``PREDICCIONES`` section is inserted after FORMACIONES ONLY
+        when ``state.predictions is not None`` and the match has not
+        started (``state.events`` empty). Once the match has started
+        the predictions section is suppressed — the live events are
+        the source of truth, not the pre-match forecast.
         """
         state = self.get_state()
         sections = [
             self._header_section(state),
             self._lineups_section(state),
-            self._goals_section(state),
-            self._stats_section(state),
-            self._standout_players_section(state),
-            self._weak_players_section(state),
-            self._all_players_section(state),
-            self._substitutions_section(state),
-            self._cards_section(state),
         ]
+        if state.predictions is not None and not state.events:
+            sections.append(self._predictions_section(state))
+        sections.extend(
+            [
+                self._goals_section(state),
+                self._stats_section(state),
+                self._standout_players_section(state),
+                self._weak_players_section(state),
+                self._all_players_section(state),
+                self._substitutions_section(state),
+                self._cards_section(state),
+            ]
+        )
         return "\n\n".join(s for s in sections if s) + "\n"
 
     # ------------------------------------------------------------------ #
@@ -368,6 +399,78 @@ class MatchStateManager:
             f"{state.home_lineup.formation or '?'} - "
             f"{state.away_lineup.team_name} {state.away_lineup.formation or '?'}"
         )
+
+    @staticmethod
+    def _predictions_section(state: MatchState) -> str:
+        """`PREDICCIONES:` block with winner, advice, probabilities, comparison.
+
+        Renders the API-Football v3 prediction data. The stored dict
+        may either carry the prediction fields at the top level or
+        nested under a ``"predictions"`` key (the v3 envelope wraps
+        the prediction object). Both shapes are handled defensively.
+
+        When ``state.predictions`` is ``None`` or empty, the section
+        collapses to ``PREDICCIONES: No disponibles``.
+        """
+        if state.predictions is None:
+            return "PREDICCIONES: No disponibles"
+
+        pred = state.predictions
+        if not isinstance(pred, dict) or not pred:
+            return "PREDICCIONES: No disponibles"
+
+        # The v3 /predictions response wraps the prediction object in a
+        # "predictions" key. Fall back to the top-level dict for robustness.
+        inner = pred.get("predictions", pred)
+        if not isinstance(inner, dict) or not inner:
+            return "PREDICCIONES: No disponibles"
+
+        lines: list[str] = ["PREDICCIONES:"]
+
+        winner = inner.get("winner")
+        if isinstance(winner, dict) and winner.get("name"):
+            comment = winner.get("comment")
+            if comment:
+                lines.append(f"Ganador: {winner['name']} ({comment})")
+            else:
+                lines.append(f"Ganador: {winner['name']}")
+
+        advice = inner.get("advice")
+        if advice:
+            lines.append(f"Recomendación: {advice}")
+
+        percent = inner.get("percent")
+        if isinstance(percent, dict) and percent:
+            home_pct = percent.get("home", "?")
+            draw_pct = percent.get("draw", "?")
+            away_pct = percent.get("away", "?")
+            lines.append(
+                f"{state.home.name} {home_pct} - Empate {draw_pct} - "
+                f"{state.away.name} {away_pct}"
+            )
+
+        comparison = inner.get("comparison")
+        if isinstance(comparison, dict) and comparison:
+            _COMPARISON_ROWS = [
+                ("form", "Forma"),
+                ("att", "Ataque"),
+                ("def", "Defensa"),
+                ("poisson_distribution", "Poisson"),
+                ("h2h", "H2H"),
+                ("goals", "Goles"),
+            ]
+            for key, label in _COMPARISON_ROWS:
+                row = comparison.get(key)
+                if isinstance(row, dict) and row:
+                    lines.append(
+                        f"{label}: {row.get('home', '?')} - {row.get('away', '?')}"
+                    )
+
+        if len(lines) == 1:
+            # Header only — no usable prediction data.
+            return "PREDICCIONES: No disponibles"
+
+        return "\n".join(lines)
 
     @staticmethod
     def _all_players_section(state: MatchState) -> str:

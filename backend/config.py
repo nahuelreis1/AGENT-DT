@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     N8N_WEBHOOK_BASE_URL: str = ""
     MOCK_MODE: bool = True
     POLLING_INTERVAL: int = 90
+    MOCK_DATA_DIR: str = ""
 
     model_config = {
         "env_file": ".env",

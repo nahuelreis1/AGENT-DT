@@ -96,6 +96,17 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("lineups fetch failed: %s", exc)
 
+    # Fetch predictions once at startup so the pre-partido (momento 0)
+    # context text can include PREDICCIONES. A failed or empty fetch
+    # (no predictions.json in mock mode, or 204 pre-kickoff in live
+    # mode) is a no-op — update_predictions stores None/{} and the
+    # section collapses to its fallback.
+    try:
+        predictions = await app.state.data_source.get_predictions()
+        app.state.match_state.update_predictions(predictions)
+    except Exception as exc:
+        log.warning("predictions fetch failed: %s", exc)
+
     app.state.milestone_detector = MilestoneDetector(
         data_source=app.state.data_source,
         match_state=app.state.match_state,
