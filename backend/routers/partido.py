@@ -16,7 +16,7 @@ lifespan needed). `/mock/*` routes return 404 when `MOCK_MODE=false`.
 
 Spec: openspec/changes/backend-api/specs/http-api/spec.md
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from backend.config import Settings
@@ -117,12 +117,50 @@ async def estado(state: MatchStateManager = Depends(get_match_state)):
 
 
 @router.get("/partido/contexto")
-async def contexto(state: MatchStateManager = Depends(get_match_state)):
-    """Return the 7-section context string as `text/plain; charset=utf-8`.
+async def contexto(
+    state: MatchStateManager = Depends(get_match_state),
+    data_source: DataSource = Depends(get_data_source),
+    momento: int | None = Query(default=None, ge=0, le=6),
+):
+    """Return the context string as `text/plain; charset=utf-8`.
 
-    The context is natural-language text (not JSON) — n8n consumes the
-    raw body. Returns HTTP 500 when the manager is uninitialized.
+    Without ``?momento=N``: returns the current in-memory state
+    (backward compatible — used by the dynamic layer and mock mode).
+
+    With ``?momento=N`` (0-6): builds a FRESH context for that
+    momento without mutating the global state.  This lets the
+    Analysis Layer's 4 agents read different momentos in parallel
+    without clobbering each other.
+
+    Momento mapping:
+      0 = pre-partido (predictions, no events)
+      1 = 15'   2 = 30'   3 = HT
+      4 = 60'   5 = 75'   6 = FT
     """
+    if momento is not None:
+        # Build a throwaway manager so parallel requests don't
+        # clobber the global state.
+        fresh = MatchStateManager()
+        try:
+            fixture = await data_source.get_fixture()
+            fresh.update_fixture(fixture)
+
+            hl, al = await data_source.get_lineups()
+            fresh.update_lineups(hl, al)
+
+            predictions = await data_source.get_predictions()
+            fresh.update_predictions(predictions)
+
+            fresh.get_state().status = MOMENTO_STATUSES[momento]
+            events, hs, aws, hp, ap = await data_source.get_details(momento)
+            fresh.update_details(events, hs, aws, hp, ap)
+
+            text = fresh.get_context_text()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"momento {momento} failed: {exc}")
+        return Response(content=text, media_type="text/plain; charset=utf-8")
+
+    # Default path: return the current in-memory state.
     try:
         text = state.get_context_text()
     except RuntimeError:
