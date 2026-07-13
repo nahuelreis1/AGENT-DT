@@ -402,15 +402,18 @@ class MatchStateManager:
 
     @staticmethod
     def _predictions_section(state: MatchState) -> str:
-        """`PREDICCIONES:` block with winner, advice, probabilities, comparison.
+        """`PREDICCIONES:` block with full pre-match data.
 
-        Renders the API-Football v3 prediction data. The stored dict
-        may either carry the prediction fields at the top level or
-        nested under a ``"predictions"`` key (the v3 envelope wraps
-        the prediction object). Both shapes are handled defensively.
-
-        When ``state.predictions`` is ``None`` or empty, the section
-        collapses to ``PREDICCIONES: No disponibles``.
+        Renders ALL prediction data from API-Football v3:
+        - Winner / advice / probabilities
+        - Recent form (last 5 games) per team
+        - Goals for/against averages
+        - Clean sheets, failed to score
+        - Formations used
+        - Goals by minute ranges
+        - Penalty stats
+        - Comparison (form, attack, defense, poisson, h2h, goals)
+        - H2H history
         """
         if state.predictions is None:
             return "PREDICCIONES: No disponibles"
@@ -419,14 +422,13 @@ class MatchStateManager:
         if not isinstance(pred, dict) or not pred:
             return "PREDICCIONES: No disponibles"
 
-        # The v3 /predictions response wraps the prediction object in a
-        # "predictions" key. Fall back to the top-level dict for robustness.
         inner = pred.get("predictions", pred)
         if not isinstance(inner, dict) or not inner:
             return "PREDICCIONES: No disponibles"
 
         lines: list[str] = ["PREDICCIONES:"]
 
+        # ── Winner / advice / probabilities ──────────────────────
         winner = inner.get("winner")
         if isinstance(winner, dict) and winner.get("name"):
             comment = winner.get("comment")
@@ -441,16 +443,103 @@ class MatchStateManager:
 
         percent = inner.get("percent")
         if isinstance(percent, dict) and percent:
-            home_pct = percent.get("home", "?")
-            draw_pct = percent.get("draw", "?")
-            away_pct = percent.get("away", "?")
             lines.append(
-                f"{state.home.name} {home_pct} - Empate {draw_pct} - "
-                f"{state.away.name} {away_pct}"
+                f"Probabilidad: {state.home.name} {percent.get('home', '?')} "
+                f"- Empate {percent.get('draw', '?')} "
+                f"- {state.away.name} {percent.get('away', '?')}"
             )
 
-        comparison = inner.get("comparison")
+        # ── Recent form per team ─────────────────────────────────
+        teams_data = pred.get("teams", {})
+        home_team = teams_data.get("home", {})
+        away_team = teams_data.get("away", {})
+
+        if home_team or away_team:
+            lines.append("")
+            lines.append("FORMA RECIENTE (últimos 5 partidos):")
+
+            for team_data, label in [(home_team, state.home.name), (away_team, state.away.name)]:
+                if not team_data:
+                    continue
+                last5 = team_data.get("last_5", {})
+                league = team_data.get("league", {})
+
+                # Form streak (WWWWW, DWWWD, etc.)
+                form_streak = league.get("form", "")
+                fixtures = league.get("fixtures", {})
+                played = fixtures.get("played", {}).get("total", 0)
+                wins = fixtures.get("wins", {}).get("total", 0)
+                draws = fixtures.get("draws", {}).get("total", 0)
+                loses = fixtures.get("loses", {}).get("total", 0)
+
+                lines.append(f"  {label}: {form_streak} ({wins}G {draws}E {loses}P de {played})")
+
+                # Goals for/against — structure is goals.for.total.{home,away,total}
+                # and goals.for.average.{home,away,total}
+                goals = league.get("goals", {})
+                gf_obj = goals.get("for", {})
+                ga_obj = goals.get("against", {})
+                gf_total = gf_obj.get("total", {}).get("total", 0) if isinstance(gf_obj.get("total"), dict) else 0
+                ga_total = ga_obj.get("total", {}).get("total", 0) if isinstance(ga_obj.get("total"), dict) else 0
+                gf_avg_total = gf_obj.get("average", {}).get("total", 0) if isinstance(gf_obj.get("average"), dict) else 0
+                ga_avg_total = ga_obj.get("average", {}).get("total", 0) if isinstance(ga_obj.get("average"), dict) else 0
+
+                if gf_total or ga_total:
+                    lines.append(f"    Goles: {gf_total} a favor ({gf_avg_total}/partido) - {ga_total} en contra ({ga_avg_total}/partido)")
+
+                # Clean sheets / failed to score
+                clean = league.get("clean_sheet", {})
+                failed = league.get("failed_to_score", {})
+                if isinstance(clean, dict) and clean.get("total") is not None:
+                    lines.append(f"    Valla invicta: {clean.get('total', 0)} de {played}")
+                if isinstance(failed, dict) and failed.get("total") is not None:
+                    lines.append(f"    Sin convertir: {failed.get('total', 0)} de {played}")
+
+                # Form/att/def from last_5
+                if isinstance(last5, dict) and last5:
+                    form_pct = last5.get("form", "")
+                    att_pct = last5.get("att", "")
+                    def_pct = last5.get("def", "")
+                    if form_pct or att_pct or def_pct:
+                        lines.append(f"    Forma: {form_pct} - Ataque: {att_pct} - Defensa: {def_pct}")
+
+                # Formations used
+                lineups_used = league.get("lineups", [])
+                if isinstance(lineups_used, list) and lineups_used:
+                    formations = [f"{l['formation']} ({l['played']} de {played})" for l in lineups_used if isinstance(l, dict) and l.get("formation")]
+                    if formations:
+                        lines.append(f"    Formaciones usadas: {', '.join(formations)}")
+
+                # Goals by minute — structure is goals.for.minute.{range}.{total,percentage}
+                gf_minute = gf_obj.get("minute", {}) if isinstance(gf_obj, dict) else {}
+                if isinstance(gf_minute, dict) and gf_minute:
+                    minute_ranges = [
+                        ("0-15", "0-15'"), ("16-30", "16-30'"), ("31-45", "31-45'"),
+                        ("46-60", "46-60'"), ("61-75", "61-75'"), ("76-90", "76-90'"),
+                        ("91-105", "91-105'"), ("106-120", "106-120'"),
+                    ]
+                    minute_parts = []
+                    for key, label_m in minute_ranges:
+                        entry = gf_minute.get(key, {})
+                        if isinstance(entry, dict) and entry.get("total"):
+                            minute_parts.append(f"{label_m} {entry['total']}")
+                    if minute_parts:
+                        lines.append(f"    Goles por minuto: {', '.join(minute_parts)}")
+
+                # Penalties
+                penalty = league.get("penalty", {})
+                if isinstance(penalty, dict) and penalty.get("total"):
+                    scored = penalty.get("scored", {}).get("total", 0)
+                    missed = penalty.get("missed", {}).get("total", 0)
+                    total = penalty.get("total", 0)
+                    pct = penalty.get("scored", {}).get("percentage", "?")
+                    lines.append(f"    Penales: {scored} de {total} ({pct})")
+
+        # ── Comparison ───────────────────────────────────────────
+        comparison = pred.get("comparison", {})
         if isinstance(comparison, dict) and comparison:
+            lines.append("")
+            lines.append("COMPARACIÓN:")
             _COMPARISON_ROWS = [
                 ("form", "Forma"),
                 ("att", "Ataque"),
@@ -458,16 +547,50 @@ class MatchStateManager:
                 ("poisson_distribution", "Poisson"),
                 ("h2h", "H2H"),
                 ("goals", "Goles"),
+                ("total", "Total"),
             ]
             for key, label in _COMPARISON_ROWS:
                 row = comparison.get(key)
                 if isinstance(row, dict) and row:
                     lines.append(
-                        f"{label}: {row.get('home', '?')} - {row.get('away', '?')}"
+                        f"  {label}: {state.home.name} {row.get('home', '?')} "
+                        f"- {state.away.name} {row.get('away', '?')}"
                     )
 
+        # ── H2H history ──────────────────────────────────────────
+        h2h_list = pred.get("h2h", [])
+        if isinstance(h2h_list, list) and h2h_list:
+            lines.append("")
+            lines.append("HISTORIAL (H2H):")
+            for match in h2h_list:
+                if not isinstance(match, dict):
+                    continue
+                m_teams = match.get("teams", {})
+                m_goals = match.get("goals", {})
+                m_league = match.get("league", {})
+                m_fixture = match.get("fixture", {})
+                m_score = match.get("score", {})
+
+                home_name = m_teams.get("home", {}).get("name", "?")
+                away_name = m_teams.get("away", {}).get("name", "?")
+                home_g = m_goals.get("home", 0)
+                away_g = m_goals.get("away", 0)
+
+                # Determine result type
+                m_status = m_fixture.get("status", {}).get("short", "")
+                result_type = ""
+                m_score_et = m_score.get("extratime", {})
+                m_score_pen = m_score.get("penalty", {})
+                if m_status == "AET":
+                    result_type = " (tiempo extra)"
+                elif m_status == "PEN":
+                    result_type = " (penales)"
+
+                year = m_fixture.get("date", "")[:4] if m_fixture.get("date") else ""
+                round_name = m_league.get("round", "")
+                lines.append(f"  {year} {round_name}: {home_name} {home_g}-{away_g} {away_name}{result_type}")
+
         if len(lines) == 1:
-            # Header only — no usable prediction data.
             return "PREDICCIONES: No disponibles"
 
         return "\n".join(lines)
